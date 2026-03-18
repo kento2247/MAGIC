@@ -1,0 +1,5 @@
+artifacts/
+app/artifacts/
+phase2_vectorized/
+phase2_layers_*/
+__pycache__/

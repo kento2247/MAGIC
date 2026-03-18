@@ -1,0 +1,16 @@
+torch=2.10.0+cu128
+cuda_available=True
+cuda_device_count=1
+Loading pipeline...
+Loading pipeline components...:   0%|          | 0/6 [00:00<?, ?it/s]Loading pipeline components...:  33%|███▎      | 2/6 [00:00<00:00, 17.35it/s]
+Loading checkpoint shards:   0%|          | 0/5 [00:00<?, ?it/s][A
+Loading checkpoint shards:  80%|████████  | 4/5 [00:00<00:00, 31.00it/s][ALoading checkpoint shards: 100%|██████████| 5/5 [00:00<00:00, 37.32it/s]
+The image processor of type `Qwen2VLImageProcessor` is now loaded as a fast processor by default, even if the model checkpoint was saved with a slow processor. This is a breaking change and may produce slightly different outputs. To continue using the slow processor, instantiate this class with `use_fast=False`. 
+Loading pipeline components...:  67%|██████▋   | 4/6 [00:01<00:00,  3.12it/s]
+Loading weights:   0%|          | 0/729 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 729/729 [00:00<00:00, 9914.42it/s]
+Loading pipeline components...:  83%|████████▎ | 5/6 [00:01<00:00,  3.62it/s]Loading pipeline components...: 100%|██████████| 6/6 [00:01<00:00,  4.58it/s]
+Enabling low-VRAM settings...
+Loading input image...
+Running inference...
+Saving 6 images...
+Done.
