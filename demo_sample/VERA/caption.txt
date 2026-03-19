@@ -1,0 +1,1 @@
+Figure 1: Architecture of VELA. The image, long candidate, and human-provided long references are processed by our metric through two branches: R2C-LLM and I2C-Align. The R2C-LLM branch leverages an LLM to capture the linguistic relationship between the candidate and references, whereas the I2C-Align branch uses Long-CLIP to compute the similarity between the candidate and image.

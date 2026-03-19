@@ -1,18 +1,20 @@
 import asyncio
 import base64
+import time
 from io import BytesIO
-from PIL import Image
 from pathlib import Path
+
+from PIL import Image
+
+from agents.critic_agent import CriticAgent
 
 # agents / utils はそのまま利用
 from agents.planner_agent import PlannerAgent
-from agents.visualizer_agent import VisualizerAgent
-from agents.stylist_agent import StylistAgent
-from agents.critic_agent import CriticAgent
-from agents.retriever_agent import RetrieverAgent
-from agents.vanilla_agent import VanillaAgent
 from agents.polish_agent import PolishAgent
-
+from agents.retriever_agent import RetrieverAgent
+from agents.stylist_agent import StylistAgent
+from agents.vanilla_agent import VanillaAgent
+from agents.visualizer_agent import VisualizerAgent
 from utils import config
 from utils.paperviz_processor import PaperVizProcessor
 
@@ -63,18 +65,14 @@ class PaperBanana:
             "caption": caption,
             "content": description,
             "visual_intent": caption,
-            "additional_info": {
-                "rounded_ratio": self.aspect_ratio
-            },
+            "additional_info": {"rounded_ratio": self.aspect_ratio},
             "max_critic_rounds": self.max_critic_rounds,
         }
 
     async def _run(self, input_data):
         results = []
         async for result in self.processor.process_queries_batch(
-            [input_data],
-            max_concurrent=1,
-            do_eval=False
+            [input_data], max_concurrent=1, do_eval=False
         ):
             results.append(result)
         return results[0]
@@ -105,7 +103,7 @@ class PaperBanana:
         image_data = base64.b64decode(b64_str)
         return Image.open(BytesIO(image_data))
 
-    def generate(self, description: str, caption: str) -> Image.Image:
+    def generate(self, description: str, caption: str, is_demo: bool) -> Image.Image:
         """
         Args:
             description: method / input text
@@ -114,13 +112,22 @@ class PaperBanana:
         Returns:
             PIL.Image
         """
-        input_data = self._create_input(description, caption)
 
-        result = asyncio.run(self._run(input_data))
+        if is_demo:
+            delay_minutes = 3
+            print(f"📄 Description: {description}")
+            print(f"🖼️ Caption: {caption}")
+            time_to_wait = delay_minutes * 60
+            print(f"⏳ Simulating processing time of {delay_minutes} minutes...")
+            time.sleep(time_to_wait)
+            image = Image.open(Path(__file__).parent / "assets" / "sample.png")
+            print("✅ Returning demo image.")
 
-        image = self._extract_final_image(result)
-
-        if image is None:
-            raise RuntimeError("Failed to generate image")
+        else:
+            input_data = self._create_input(description, caption)
+            result = asyncio.run(self._run(input_data))
+            image = self._extract_final_image(result)
+            if image is None:
+                raise RuntimeError("Failed to generate image")
 
         return image

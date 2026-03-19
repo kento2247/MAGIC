@@ -1,0 +1,2 @@
+Figure 1: Overall architecture of GENNAV. DA represents Depth Anything [45]. The green, red,
+and blue regions in this figure represent the LDPM, VLSiM, and ExPo modules, respectively.
