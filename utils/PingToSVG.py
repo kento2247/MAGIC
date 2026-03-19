@@ -1,13 +1,14 @@
 import base64
 from collections import defaultdict
 from io import BytesIO
+from pathlib import Path
 from typing import Any
 
-import numpy as np
-from PIL import Image
-
 import cv2
+import easyocr
+import numpy as np
 import torch
+from PIL import Image, ImageDraw
 
 
 class PingToSVG:
@@ -63,48 +64,416 @@ class PingToSVG:
         Returns:
             SVG string
         """
-        image = image.convert("RGB")
-
-        # Stage 1: OCR
-        texts = self._run_ocr(image, self.device, conf_thresh=self.ocr_conf_thresh)
-
-        # Stage 1.5: Erase text
-        if self.erase_text_before_sam and texts:
-            image_clean = self._erase_text(image, texts)
-        else:
-            image_clean = image
-
-        # Stage 1.7: Detect arrows
-        if self.use_arrows:
-            arrows = self._detect_arrows(image_clean)
-        else:
-            arrows = []
-
-        # Stage 1.6: Erase arrows before SAM
-        image_before_arrow_erase = image_clean
-        if arrows:
-            image_clean = self._erase_arrows(image_clean, arrows)
-
-        # Stage 2: SAM
-        if self.use_sam:
-            sam_components = self._run_sam(image_clean, self.sam_model_id, self.device)
-        else:
-            sam_components = []
-
-        # Merge
-        sam_components, _ = self._merge_ocr_sam(texts, sam_components)
+        pipeline = self._run_pipeline(image)
 
         # Build SVG
         svg = self._build_svg(
-            image=image_clean,
-            sam_components=sam_components,
-            arrows=arrows,
-            all_texts=texts,
-            arrow_image=image_before_arrow_erase,
+            image=pipeline["image_after_arrow_erase"],
+            sam_components=pipeline["merged_components"],
+            arrows=pipeline["arrows"],
+            all_texts=pipeline["texts"],
+            arrow_image=pipeline["image_before_arrow_erase"],
             ocr_overlay=self.use_ocr_overlay,
             show_outline=self.show_outline,
         )
         return svg
+
+    def convert_with_trace(
+        self,
+        image: Image.Image,
+        allow_partial: bool = False,
+    ) -> dict[str, Any]:
+        pipeline = self._run_pipeline(image, allow_partial=allow_partial)
+        svg = self._build_svg(
+            image=pipeline["image_after_arrow_erase"],
+            sam_components=pipeline["merged_components"],
+            arrows=pipeline["arrows"],
+            all_texts=pipeline["texts"],
+            arrow_image=pipeline["image_before_arrow_erase"],
+            ocr_overlay=self.use_ocr_overlay,
+            show_outline=self.show_outline,
+        )
+        width, height = pipeline["original_image"].size
+        warnings = pipeline["warnings"]
+
+        stages = [
+            {
+                "key": "ocr",
+                "label": "OCR: 文字候補を走査しています。",
+                "metric": warnings["ocr"] or f"{len(pipeline['texts'])} text regions",
+                "image": self._render_ocr_overlay((width, height), pipeline["texts"]),
+                "texts": self._copy_texts(pipeline["texts"]),
+            },
+            {
+                "key": "erase_text",
+                "label": "Erase text: 検出した文字領域を消去しています。",
+                "metric": (
+                    "skipped: OCR unavailable"
+                    if warnings["ocr"]
+                    else f"{len(pipeline['texts'])} regions removed"
+                ),
+                "image": pipeline["image_after_text_erase"],
+                "texts": self._copy_texts(pipeline["texts"]),
+            },
+            {
+                "key": "detect_arrows",
+                "label": "Detect arrows: 矢印の候補を検出しています。",
+                "metric": warnings["arrows"] or f"{len(pipeline['arrows'])} arrows",
+                "image": self._render_arrow_overlay(
+                    (width, height), pipeline["arrows"]
+                ),
+                "arrows": self._copy_arrows(pipeline["arrows"]),
+            },
+            {
+                "key": "erase_arrows",
+                "label": "Erase arrows before SAM: SAM 前処理として矢印を消去しています。",
+                "metric": (
+                    "skipped: arrow detection unavailable"
+                    if warnings["arrows"]
+                    else f"{len(pipeline['arrows'])} arrows removed"
+                ),
+                "image": pipeline["image_after_arrow_erase"],
+                "arrows": self._copy_arrows(pipeline["arrows"]),
+            },
+            {
+                "key": "sam",
+                "label": "SAM: 領域マスクを推定しています。",
+                "metric": warnings["sam"]
+                or f"{len(pipeline['sam_components'])} components",
+                "image": self._render_sam_overlay(
+                    (width, height), pipeline["sam_components"]
+                ),
+                "components": self._copy_components(pipeline["sam_components"]),
+            },
+            {
+                "key": "merge",
+                "label": "Merge: 各結果を統合して SVG export を組み立てています。",
+                "metric": (
+                    f"{len(pipeline['merged_components'])} blocks / "
+                    f"{len(pipeline['texts'])} texts / "
+                    f"{len(pipeline['orphan_texts'])} orphan texts"
+                ),
+                "image": self._render_merge_overlay(
+                    (width, height),
+                    pipeline["merged_components"],
+                    pipeline["texts"],
+                    pipeline["orphan_texts"],
+                    pipeline["arrows"],
+                ),
+                "components": self._copy_components(pipeline["merged_components"]),
+                "texts": self._copy_texts(pipeline["texts"]),
+                "orphan_texts": self._copy_texts(pipeline["orphan_texts"]),
+            },
+        ]
+
+        return {
+            "svg": svg,
+            "width": width,
+            "height": height,
+            "stages": stages,
+            "warnings": [warning for warning in warnings.values() if warning],
+        }
+
+    def _run_pipeline(
+        self,
+        image: Image.Image,
+        allow_partial: bool = False,
+    ) -> dict[str, Any]:
+        image = image.convert("RGB")
+        warnings: dict[str, str | None] = {"ocr": None, "arrows": None, "sam": None}
+
+        try:
+            texts = self._run_ocr(image, self.device, conf_thresh=self.ocr_conf_thresh)
+        except Exception as exc:
+            if not allow_partial:
+                raise
+            texts = []
+            warnings["ocr"] = f"OCR unavailable: {exc}"
+
+        if self.erase_text_before_sam and texts:
+            image_after_text_erase = self._erase_text(image, texts)
+        else:
+            image_after_text_erase = image.copy()
+
+        try:
+            if self.use_arrows:
+                arrows = self._decorate_arrows(
+                    self._detect_arrows(image_after_text_erase)
+                )
+            else:
+                arrows = []
+        except Exception as exc:
+            if not allow_partial:
+                raise
+            arrows = []
+            warnings["arrows"] = f"Arrow detection unavailable: {exc}"
+
+        image_before_arrow_erase = image_after_text_erase.copy()
+        if arrows:
+            image_after_arrow_erase = self._erase_arrows(image_after_text_erase, arrows)
+        else:
+            image_after_arrow_erase = image_after_text_erase.copy()
+
+        try:
+            if self.use_sam:
+                sam_components = self._run_sam(
+                    image_after_arrow_erase, self.sam_model_id, self.device
+                )
+            else:
+                sam_components = []
+        except Exception as exc:
+            if not allow_partial:
+                raise
+            sam_components = []
+            warnings["sam"] = f"SAM unavailable: {exc}"
+
+        merged_components = self._copy_components(sam_components)
+        merged_components, orphan_texts = self._merge_ocr_sam(texts, merged_components)
+
+        return {
+            "original_image": image,
+            "texts": self._copy_texts(texts),
+            "image_after_text_erase": image_after_text_erase,
+            "arrows": self._copy_arrows(arrows),
+            "image_before_arrow_erase": image_before_arrow_erase,
+            "image_after_arrow_erase": image_after_arrow_erase,
+            "sam_components": self._copy_components(sam_components),
+            "merged_components": self._copy_components(merged_components),
+            "orphan_texts": self._copy_texts(orphan_texts),
+            "warnings": warnings,
+        }
+
+    @staticmethod
+    def _copy_texts(texts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        copied: list[dict[str, Any]] = []
+        for text in texts:
+            copied.append(
+                {
+                    "text": str(text["text"]),
+                    "bbox": [int(v) for v in text["bbox"]],
+                    "conf": float(text["conf"]),
+                    "cx": float(text["cx"]),
+                    "cy": float(text["cy"]),
+                    "font_size": int(text["font_size"]),
+                }
+            )
+        return copied
+
+    @staticmethod
+    def _copy_components(components: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        copied: list[dict[str, Any]] = []
+        for component in components:
+            copied_component: dict[str, Any] = {
+                "id": str(component["id"]),
+                "bbox": [int(v) for v in component["bbox"]],
+            }
+            if "texts" in component:
+                copied_component["texts"] = PingToSVG._copy_texts(component["texts"])
+            copied.append(copied_component)
+        return copied
+
+    @staticmethod
+    def _copy_arrows(arrows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        copied: list[dict[str, Any]] = []
+        for arrow in arrows:
+            copied.append(
+                {
+                    "id": str(arrow["id"]),
+                    "bbox": [int(v) for v in arrow["bbox"]],
+                    "orientation": str(arrow["orientation"]),
+                    "x1": int(arrow["x1"]),
+                    "y1": int(arrow["y1"]),
+                    "x2": int(arrow["x2"]),
+                    "y2": int(arrow["y2"]),
+                }
+            )
+        return copied
+
+    @staticmethod
+    def _measure_text(draw: ImageDraw.ImageDraw, text: str) -> tuple[int, int]:
+        try:
+            left, top, right, bottom = draw.textbbox((0, 0), text)
+            return right - left, bottom - top
+        except Exception:
+            return max(12, len(text) * 6), 12
+
+    @classmethod
+    def _draw_badge(
+        cls,
+        draw: ImageDraw.ImageDraw,
+        xy: tuple[int, int],
+        text: str,
+        fill: tuple[int, int, int, int],
+        text_fill: tuple[int, int, int, int],
+    ) -> None:
+        text_width, text_height = cls._measure_text(draw, text)
+        x, y = xy
+        padding_x = 8
+        padding_y = 4
+        draw.rounded_rectangle(
+            (
+                x,
+                y,
+                x + text_width + padding_x * 2,
+                y + text_height + padding_y * 2,
+            ),
+            radius=10,
+            fill=fill,
+        )
+        draw.text((x + padding_x, y + padding_y), text, fill=text_fill)
+
+    def _render_ocr_overlay(
+        self,
+        size: tuple[int, int],
+        texts: list[dict[str, Any]],
+    ) -> Image.Image:
+        overlay = Image.new("RGBA", size, (0, 0, 0, 0))
+        draw = ImageDraw.Draw(overlay, "RGBA")
+
+        for index, text in enumerate(texts):
+            x1, y1, x2, y2 = [int(v) for v in text["bbox"]]
+            outline = (215, 129, 42, 235) if index % 2 == 0 else (67, 121, 212, 235)
+            fill = (255, 242, 222, 76) if index % 2 == 0 else (226, 236, 255, 70)
+            draw.rounded_rectangle(
+                (x1, y1, x2, y2), radius=10, outline=outline, width=3, fill=fill
+            )
+            label = text["text"][:18] or "OCR"
+            badge_y = max(0, y1 - 22)
+            self._draw_badge(
+                draw, (x1, badge_y), label, (18, 25, 35, 208), (255, 253, 249, 255)
+            )
+
+        return overlay
+
+    @staticmethod
+    def _decorate_arrows(arrows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        decorated: list[dict[str, Any]] = []
+        for arrow in arrows:
+            x1, y1, x2, y2 = [int(v) for v in arrow["bbox"]]
+            width = x2 - x1
+            height = y2 - y1
+            orientation = "horizontal" if width >= height else "vertical"
+            if orientation == "horizontal":
+                decorated.append(
+                    {
+                        "id": str(arrow["id"]),
+                        "bbox": [x1, y1, x2, y2],
+                        "orientation": orientation,
+                        "x1": x1,
+                        "y1": int((y1 + y2) / 2),
+                        "x2": x2,
+                        "y2": int((y1 + y2) / 2),
+                    }
+                )
+            else:
+                decorated.append(
+                    {
+                        "id": str(arrow["id"]),
+                        "bbox": [x1, y1, x2, y2],
+                        "orientation": orientation,
+                        "x1": int((x1 + x2) / 2),
+                        "y1": y1,
+                        "x2": int((x1 + x2) / 2),
+                        "y2": y2,
+                    }
+                )
+        return decorated
+
+    def _render_arrow_overlay(
+        self,
+        size: tuple[int, int],
+        arrows: list[dict[str, Any]],
+    ) -> Image.Image:
+        overlay = Image.new("RGBA", size, (0, 0, 0, 0))
+        draw = ImageDraw.Draw(overlay, "RGBA")
+
+        for arrow in arrows:
+            x1, y1, x2, y2 = [int(v) for v in arrow["bbox"]]
+            draw.rounded_rectangle(
+                (x1, y1, x2, y2),
+                radius=10,
+                outline=(58, 150, 98, 235),
+                width=3,
+                fill=(140, 205, 164, 54),
+            )
+            self._draw_badge(
+                draw,
+                (x1, max(0, y1 - 22)),
+                arrow["id"],
+                (18, 25, 35, 208),
+                (235, 255, 241, 255),
+            )
+
+        return overlay
+
+    def _render_sam_overlay(
+        self,
+        size: tuple[int, int],
+        components: list[dict[str, Any]],
+    ) -> Image.Image:
+        overlay = Image.new("RGBA", size, (0, 0, 0, 0))
+        draw = ImageDraw.Draw(overlay, "RGBA")
+        palette = [
+            ((54, 122, 201, 220), (173, 212, 255, 68)),
+            ((84, 168, 112, 220), (182, 233, 192, 70)),
+            ((180, 98, 178, 220), (230, 192, 231, 68)),
+            ((215, 129, 42, 220), (255, 225, 181, 70)),
+        ]
+
+        for index, component in enumerate(components):
+            outline, fill = palette[index % len(palette)]
+            x1, y1, x2, y2 = [int(v) for v in component["bbox"]]
+            draw.rounded_rectangle(
+                (x1, y1, x2, y2), radius=12, outline=outline, width=3, fill=fill
+            )
+            self._draw_badge(
+                draw,
+                (x1, max(0, y1 - 22)),
+                str(component["id"]),
+                (18, 25, 35, 208),
+                (255, 253, 249, 255),
+            )
+
+        return overlay
+
+    def _render_merge_overlay(
+        self,
+        size: tuple[int, int],
+        components: list[dict[str, Any]],
+        texts: list[dict[str, Any]],
+        orphan_texts: list[dict[str, Any]],
+        arrows: list[dict[str, Any]],
+    ) -> Image.Image:
+        overlay = Image.new("RGBA", size, (0, 0, 0, 0))
+        draw = ImageDraw.Draw(overlay, "RGBA")
+
+        for component in components:
+            x1, y1, x2, y2 = [int(v) for v in component["bbox"]]
+            draw.rounded_rectangle(
+                (x1, y1, x2, y2),
+                radius=12,
+                outline=(54, 122, 201, 235),
+                width=3,
+                fill=(173, 212, 255, 48),
+            )
+
+        for text in texts:
+            x1, y1, x2, y2 = [int(v) for v in text["bbox"]]
+            color = (215, 129, 42, 230)
+            if any(orphan["bbox"] == text["bbox"] for orphan in orphan_texts):
+                color = (204, 51, 0, 230)
+            draw.rounded_rectangle((x1, y1, x2, y2), radius=10, outline=color, width=2)
+
+        for arrow in arrows:
+            x1, y1, x2, y2 = [int(v) for v in arrow["bbox"]]
+            draw.rounded_rectangle(
+                (x1, y1, x2, y2),
+                radius=10,
+                outline=(84, 168, 112, 210),
+                width=2,
+            )
+
+        return overlay
 
     # -------------------------------------------------------------------------
     # bbox utils
@@ -148,11 +517,6 @@ class PingToSVG:
         device: str,
         conf_thresh: float,
     ) -> list[dict[str, Any]]:
-        try:
-            import easyocr
-        except ImportError as e:
-            raise ImportError("easyocr is required. pip install easyocr") from e
-
         iw, ih = image.size
         reader = easyocr.Reader(["en"], gpu=(device == "cuda"), verbose=False)
         raw = reader.readtext(np.array(image), batch_size=8)
@@ -309,7 +673,9 @@ class PingToSVG:
             if stats[i, cv2.CC_STAT_AREA] < 5:
                 continue
             comp = (labels == i).astype(np.uint8) * 255
-            contours, _ = cv2.findContours(comp, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            contours, _ = cv2.findContours(
+                comp, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+            )
             for cnt in contours:
                 a = cv2.contourArea(cnt)
                 if a < 20:
@@ -333,9 +699,7 @@ class PingToSVG:
         v = hsv[:, :, 2]
 
         gray_bin = (
-            (s < self.ARROW_S_MAX)
-            & (v >= self.ARROW_V_MIN)
-            & (v <= self.ARROW_V_MAX)
+            (s < self.ARROW_S_MAX) & (v >= self.ARROW_V_MIN) & (v <= self.ARROW_V_MAX)
         ).astype(np.uint8) * 255
 
         k3 = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
@@ -365,7 +729,9 @@ class PingToSVG:
             if comp_area > self.ARROW_MAX_AREA:
                 continue
 
-            arrows.append({"id": f"arrow_{len(arrows)+1}", "bbox": [x, y, x + w, y + h]})
+            arrows.append(
+                {"id": f"arrow_{len(arrows)+1}", "bbox": [x, y, x + w, y + h]}
+            )
 
         return arrows
 
@@ -392,11 +758,19 @@ class PingToSVG:
     ) -> list[dict[str, Any]]:
         from transformers import pipeline as hf_pipeline
 
+        if not self._is_hf_model_available_locally(sam_model_id):
+            raise RuntimeError(f"SAM model not available locally: {sam_model_id}")
+
         iw, ih = image.size
         total_area = iw * ih
         device_idx = 0 if device == "cuda" else -1
 
-        mask_gen = hf_pipeline("mask-generation", model=sam_model_id, device=device_idx)
+        mask_gen = hf_pipeline(
+            "mask-generation",
+            model=sam_model_id,
+            device=device_idx,
+            local_files_only=True,
+        )
         outputs = mask_gen(
             image,
             points_per_batch=64,
@@ -494,6 +868,22 @@ class PingToSVG:
             .replace("'", "&apos;")
         )
 
+    @staticmethod
+    def _is_hf_model_available_locally(model_id: str) -> bool:
+        model_path = Path(model_id)
+        if model_path.exists():
+            return True
+
+        cache_root = Path.home() / ".cache" / "huggingface" / "hub"
+        model_dir = cache_root / f"models--{model_id.replace('/', '--')}" / "snapshots"
+        if not model_dir.exists():
+            return False
+
+        for snapshot in model_dir.iterdir():
+            if snapshot.is_dir() and (snapshot / "config.json").exists():
+                return True
+        return False
+
     def _crop_b64(
         self, image: Image.Image, bbox: list[int], width: int, height: int
     ) -> tuple[int, int, int, int, str]:
@@ -522,9 +912,7 @@ class PingToSVG:
         s = hsv[:, :, 1]
         v = hsv[:, :, 2]
         arrow_mask = (
-            (s < self.ARROW_S_MAX)
-            & (v >= self.ARROW_V_MIN)
-            & (v <= self.ARROW_V_MAX)
+            (s < self.ARROW_S_MAX) & (v >= self.ARROW_V_MIN) & (v <= self.ARROW_V_MAX)
         )
 
         rgba = np.zeros((*crop_rgb.shape[:2], 4), dtype=np.uint8)
@@ -557,13 +945,15 @@ class PingToSVG:
         ]
 
         if sam_components:
-            lines.append('  <!-- Layer 1: SAM visual blocks -->')
+            lines.append("  <!-- Layer 1: SAM visual blocks -->")
             lines.append('  <g id="visual-blocks">')
             for blk in sam_components:
                 bid = self._esc(blk["id"])
                 x1, y1, x2, y2 = blk["bbox"]
                 w, h = x2 - x1, y2 - y1
-                cx1, cy1, cx2, cy2, b64 = self._crop_b64(image, blk["bbox"], width, height)
+                cx1, cy1, cx2, cy2, b64 = self._crop_b64(
+                    image, blk["bbox"], width, height
+                )
 
                 lines.append(f'    <g id="{bid}">')
                 lines.append(
@@ -575,12 +965,12 @@ class PingToSVG:
                         f'      <rect x="{x1}" y="{y1}" width="{w}" height="{h}" '
                         f'fill="none" stroke="#0055cc" stroke-width="1.5" stroke-dasharray="4 2"/>'
                     )
-                lines.append('    </g>')
-            lines.append('  </g>')
+                lines.append("    </g>")
+            lines.append("  </g>")
             lines.append("")
 
         if arrows:
-            lines.append('  <!-- Layer 1.5: Arrow components -->')
+            lines.append("  <!-- Layer 1.5: Arrow components -->")
             lines.append('  <g id="arrow-layer">')
             for arrow in arrows:
                 aid = self._esc(arrow["id"])
@@ -600,13 +990,15 @@ class PingToSVG:
                         f'      <rect x="{x1}" y="{y1}" width="{w}" height="{h}" '
                         f'fill="none" stroke="#00aa44" stroke-width="1.5" stroke-dasharray="4 2"/>'
                     )
-                lines.append('    </g>')
-            lines.append('  </g>')
+                lines.append("    </g>")
+            lines.append("  </g>")
             lines.append("")
 
         if ocr_overlay and all_texts:
-            lines.append('  <!-- Layer 2: OCR text -->')
-            lines.append('  <g id="text-layer" font-family="Arial,Helvetica,sans-serif">')
+            lines.append("  <!-- Layer 2: OCR text -->")
+            lines.append(
+                '  <g id="text-layer" font-family="Arial,Helvetica,sans-serif">'
+            )
             for txt in all_texts:
                 x1, y1, x2, y2 = txt["bbox"]
                 cx = (x1 + x2) / 2
@@ -628,7 +1020,7 @@ class PingToSVG:
                     f'    <text x="{cx:.1f}" y="{cy:.1f}" font-size="{fs}" text-anchor="middle" '
                     f'dominant-baseline="middle" opacity="{opacity}" fill="#111111">{escaped}</text>'
                 )
-            lines.append('  </g>')
+            lines.append("  </g>")
             lines.append("")
 
         lines.append("</svg>")

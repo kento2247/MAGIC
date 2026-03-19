@@ -1,5 +1,6 @@
 import base64
 import os
+import re
 from io import BytesIO
 from pathlib import Path
 from uuid import uuid4
@@ -13,6 +14,7 @@ from flask import (
     send_from_directory,
     url_for,
 )
+from PIL import Image
 
 from utils.InstructionCompletion import InstructionCompletion
 from utils.PingToSVG import PingToSVG
@@ -85,6 +87,24 @@ def image_to_data_url(image) -> str:
     image.save(buffer, format="PNG")
     encoded = base64.b64encode(buffer.getvalue()).decode("utf-8")
     return f"data:image/png;base64,{encoded}"
+
+
+def data_url_to_image(data_url: str) -> Image.Image:
+    if "," not in data_url:
+        raise ValueError("Invalid data URL.")
+    header, encoded = data_url.split(",", 1)
+    if ";base64" not in header:
+        raise ValueError("Only base64 data URLs are supported.")
+    try:
+        binary = base64.b64decode(encoded)
+    except Exception as exc:
+        raise ValueError("Invalid base64 image payload.") from exc
+    return Image.open(BytesIO(binary)).convert("RGB")
+
+
+def sanitize_filename_base(value: str) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "_", value).strip("._")
+    return cleaned or "generated_figure"
 
 
 def save_generated_image(image) -> str:
@@ -175,12 +195,54 @@ def generate_figure():
     )
 
 
+@app.post("/api/export-svg")
+def export_svg():
+    data = request.get_json(silent=True) or {}
+    image_data_url = str(data.get("image_data_url") or "").strip()
+    filename_base = sanitize_filename_base(str(data.get("filename_base") or ""))
+
+    if not image_data_url:
+        return jsonify({"error": "image_data_url is required"}), 400
+
+    try:
+        image = data_url_to_image(image_data_url)
+        export_result = ping_to_svg.convert_with_trace(image, allow_partial=True)
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+    stages = []
+    for stage in export_result["stages"]:
+        stages.append(
+            {
+                "key": stage["key"],
+                "label": stage["label"],
+                "metric": stage["metric"],
+                "image_data_url": image_to_data_url(stage["image"]),
+                "texts": stage.get("texts", []),
+                "arrows": stage.get("arrows", []),
+                "components": stage.get("components", []),
+                "orphan_texts": stage.get("orphan_texts", []),
+            }
+        )
+
+    return jsonify(
+        {
+            "svg_text": export_result["svg"],
+            "filename": f"{filename_base}.svg",
+            "width": export_result["width"],
+            "height": export_result["height"],
+            "stages": stages,
+            "warnings": export_result.get("warnings", []),
+        }
+    )
+
+
 @app.get("/generated-image/<path:filename>")
 def generated_image(filename: str):
     image_path = GENERATED_IMAGE_DIR / filename
     if not image_path.exists():
         abort(404, description="Generated image not found.")
-    return send_from_directory(GENERATED_IMAGE_DIR, image_path.name)
+    return send_from_directory(GENERATED_IMAGE_DIR, filename)
 
 
 @app.get("/demo-sample-image/<path:sample_name>")
