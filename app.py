@@ -141,11 +141,10 @@ class ImageCropper:
             json.dump(manifest, f, ensure_ascii=False, indent=2)
         self.logger.info(f"Saved manifest: {manifest_path}")
 
-cropper = ImageCropper(api_key=os.getenv("OPENAI_API_KEY"))
-
 @app.get("/")
 @app.post("/crop_image")
 def crop_image():
+    pass
 
 
 
