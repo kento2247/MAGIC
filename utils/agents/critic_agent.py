@@ -16,14 +16,18 @@
 Vanilla Agent - Directly rendering images based on the method section.
 """
 
+import asyncio
+import base64
+import io
 import json
-from typing import Dict, Any
-from google.genai import types
-import base64, io, asyncio
-from PIL import Image
-import json_repair
+from typing import Any, Dict
 
-from utils import generation_utils
+from google.genai import types
+from PIL import Image
+
+import json_repair
+from utils.agents import generation_utils
+
 from .base_agent import BaseAgent
 
 
@@ -50,22 +54,24 @@ class CriticAgent(BaseAgent):
                 "context_labels": ["Methodology Section", "Figure Caption"],
             }
 
-    async def process(self, data: Dict[str, Any], source: str = "stylist") -> Dict[str, Any]:
+    async def process(
+        self, data: Dict[str, Any], source: str = "stylist"
+    ) -> Dict[str, Any]:
         """
         Unified processing method for both diagram and plot critique.
         Uses task_config to determine task-specific parameters.
-        
+
         Args:
             data: Input data dictionary
-            source: Source of the input for round 0 critique. 
+            source: Source of the input for round 0 critique.
                    - "stylist": Use stylist output (default for backward compatibility)
                    - "planner": Use planner output (for planner-critic workflow)
         """
         cfg = self.task_config
         task_name = cfg["task_name"]
-        
+
         round_idx = data.get("current_critic_round", 0)
-        
+
         if round_idx == 0:
             # First round: use specified source (stylist or planner)
             if source == "stylist":
@@ -75,8 +81,10 @@ class CriticAgent(BaseAgent):
                 desc_key = f"target_{task_name}_desc0"
                 base64_key = f"target_{task_name}_desc0_base64_jpg"
             else:
-                raise ValueError(f"Invalid source '{source}'. Must be 'stylist' or 'planner'.")
-            
+                raise ValueError(
+                    f"Invalid source '{source}'. Must be 'stylist' or 'planner'."
+                )
+
             detailed_description = data[desc_key]
             image_base64 = data.get(base64_key)
         else:
@@ -85,33 +93,41 @@ class CriticAgent(BaseAgent):
             base64_key = f"target_{task_name}_critic_desc{round_idx - 1}_base64_jpg"
             detailed_description = data[desc_key]
             image_base64 = data.get(base64_key)
-        
+
         content = data["content"]
         if isinstance(content, (dict, list)):
             content = json.dumps(content)
         visual_intent = data["visual_intent"]
         content_list = [{"type": "text", "text": cfg["critique_target"]}]
-        
-        if image_base64 and len(image_base64) > 100:
-            content_list.append({
-                "type": "image",
-                "source": {
-                    "type": "base64",
-                    "data": image_base64,
-                    "media_type": "image/jpeg",
-                },
-            })
-        else:
-            print(f"⚠️ [Critic] No valid image found for round {round_idx}. Using text-only critique mode.")
-            content_list.append({
-                "type": "text", 
-                "text": "\n[SYSTEM NOTICE] The plot image could not be generated based on the current description (likely due to invalid code). Please check the description for errors (e.g., syntax issues, missing data) and provide a revised version."
-            })
 
-        content_list.append({
-            "type": "text",
-            "text": f"Detailed Description: {detailed_description}\n{cfg['context_labels'][0]}: {content}\n{cfg['context_labels'][1]}: {visual_intent}\nYour Output:",
-        })
+        if image_base64 and len(image_base64) > 100:
+            content_list.append(
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "data": image_base64,
+                        "media_type": "image/jpeg",
+                    },
+                }
+            )
+        else:
+            print(
+                f"⚠️ [Critic] No valid image found for round {round_idx}. Using text-only critique mode."
+            )
+            content_list.append(
+                {
+                    "type": "text",
+                    "text": "\n[SYSTEM NOTICE] The plot image could not be generated based on the current description (likely due to invalid code). Please check the description for errors (e.g., syntax issues, missing data) and provide a revised version.",
+                }
+            )
+
+        content_list.append(
+            {
+                "type": "text",
+                "text": f"Detailed Description: {detailed_description}\n{cfg['context_labels'][0]}: {content}\n{cfg['context_labels'][1]}: {visual_intent}\nYour Output:",
+            }
+        )
 
         response_list = await generation_utils.call_model_with_retry_async(
             model_name=self.model_name,
@@ -125,7 +141,7 @@ class CriticAgent(BaseAgent):
             max_attempts=5,
             retry_delay=5,
         )
-        
+
         cleaned_response = (
             response_list[0].replace("```json", "").replace("```", "").strip()
         )
@@ -138,8 +154,10 @@ class CriticAgent(BaseAgent):
             print(e, cleaned_response)
 
         critic_suggestions = eval_result.get("critic_suggestions", "No changes needed.")
-        revised_description = eval_result.get("revised_description", "No changes needed.")
-        
+        revised_description = eval_result.get(
+            "revised_description", "No changes needed."
+        )
+
         data[f"target_{task_name}_critic_suggestions{round_idx}"] = critic_suggestions
         data[f"target_{task_name}_critic_desc{round_idx}"] = revised_description
 
@@ -229,6 +247,9 @@ Provide your response strictly in the following JSON format.
 ```json
 {
     "critic_suggestions": "Insert your detailed critique and specific suggestions for improvement here. If the plot is perfect, write 'No changes needed.'",
+    "revised_description": "Insert the fully revised detailed description here, incorporating all your suggestions. If no changes are needed, write 'No changes needed.'",
+}
+```
     "revised_description": "Insert the fully revised detailed description here, incorporating all your suggestions. If no changes are needed, write 'No changes needed.'",
 }
 ```

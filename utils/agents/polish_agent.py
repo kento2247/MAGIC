@@ -23,7 +23,8 @@ from typing import Dict, Any
 from google.genai import types
 from PIL import Image
 
-from utils import generation_utils, image_utils
+from utils import image_utils
+from utils.agents import generation_utils
 from .base_agent import BaseAgent
 
 

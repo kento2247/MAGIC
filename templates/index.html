@@ -1,0 +1,1382 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Paper Figure Draft Studio</title>
+    <style>
+        :root {
+            --paper: #f6f0e6;
+            --paper-deep: #ead9bd;
+            --ink: #1f2a37;
+            --ink-soft: #556272;
+            --line: rgba(31, 42, 55, 0.12);
+            --navy: #18314f;
+            --amber: #d7812a;
+            --mint: #3b7a6d;
+            --rose: #9a4f45;
+            --surface: rgba(255, 252, 247, 0.86);
+            --shadow: 0 18px 45px rgba(24, 49, 79, 0.12);
+            --radius: 26px;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            font-family: "Avenir Next", "Segoe UI", sans-serif;
+            color: var(--ink);
+            background:
+                radial-gradient(circle at top left, rgba(215, 129, 42, 0.18), transparent 32%),
+                radial-gradient(circle at 85% 18%, rgba(24, 49, 79, 0.18), transparent 24%),
+                linear-gradient(160deg, #f7f1e8 0%, #efe6d7 56%, #f4efe9 100%);
+        }
+
+        body.modal-open {
+            overflow: hidden;
+        }
+
+        body::before,
+        body::after {
+            content: "";
+            position: fixed;
+            inset: auto;
+            width: 22rem;
+            height: 22rem;
+            border-radius: 50%;
+            filter: blur(12px);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        body::before {
+            right: -7rem;
+            bottom: -6rem;
+            background: rgba(59, 122, 109, 0.12);
+        }
+
+        body::after {
+            left: -7rem;
+            top: 10rem;
+            background: rgba(154, 79, 69, 0.1);
+        }
+
+        .page {
+            position: relative;
+            z-index: 1;
+            width: min(1380px, calc(100vw - 2rem));
+            margin: 0 auto;
+            padding: 1.4rem 0 2rem;
+        }
+
+        .hero {
+            display: grid;
+            grid-template-columns: 1.5fr 0.9fr;
+            gap: 1rem;
+            align-items: end;
+            margin-bottom: 1rem;
+        }
+
+        .hero-card,
+        .control-card,
+        .panel {
+            background: var(--surface);
+            border: 1px solid rgba(255, 255, 255, 0.7);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            backdrop-filter: blur(14px);
+        }
+
+        .hero-card {
+            padding: 1.4rem 1.5rem;
+        }
+
+        .eyebrow {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.45rem;
+            padding: 0.35rem 0.75rem;
+            border-radius: 999px;
+            background: rgba(24, 49, 79, 0.08);
+            color: var(--navy);
+            font-size: 0.82rem;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        h1 {
+            margin: 0.9rem 0 0.45rem;
+            font-family: "Iowan Old Style", "Palatino Linotype", serif;
+            font-size: clamp(2rem, 3vw, 3.4rem);
+            line-height: 0.98;
+            letter-spacing: -0.03em;
+        }
+
+        .hero p {
+            margin: 0;
+            color: var(--ink-soft);
+            font-size: 0.98rem;
+            line-height: 1.65;
+        }
+
+        .status-card {
+            padding: 1.25rem 1.3rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.9rem;
+        }
+
+        .status-badge {
+            display: inline-flex;
+            width: fit-content;
+            align-items: center;
+            gap: 0.45rem;
+            padding: 0.45rem 0.78rem;
+            border-radius: 999px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            background: rgba(24, 49, 79, 0.1);
+            color: var(--navy);
+        }
+
+        .status-badge[data-tone="working"] {
+            background: rgba(215, 129, 42, 0.16);
+            color: #8a4d10;
+        }
+
+        .status-badge[data-tone="ready"] {
+            background: rgba(59, 122, 109, 0.16);
+            color: #21584d;
+        }
+
+        .status-badge[data-tone="needs-info"] {
+            background: rgba(154, 79, 69, 0.14);
+            color: #7d382f;
+        }
+
+        .control-card {
+            display: grid;
+            grid-template-columns: 1.3fr 1fr;
+            gap: 1rem;
+            padding: 1rem 1.1rem;
+            margin-bottom: 1rem;
+        }
+
+        .control-stack {
+            display: grid;
+            gap: 0.9rem;
+        }
+
+        .control-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.8rem;
+            align-items: center;
+        }
+
+        .mode-toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.9rem;
+        }
+
+        .mode-toggle-control {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            cursor: pointer;
+        }
+
+        .mode-toggle-copy {
+            display: grid;
+            gap: 0.12rem;
+        }
+
+        .mode-toggle-title {
+            font-weight: 700;
+            color: var(--navy);
+            line-height: 1.2;
+        }
+
+        .mode-toggle-state {
+            color: var(--ink-soft);
+            font-size: 0.82rem;
+            line-height: 1.2;
+        }
+
+        .mode-toggle-checkbox {
+            position: absolute;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .mode-switch {
+            position: relative;
+            width: 78px;
+            height: 42px;
+            border-radius: 999px;
+            background: rgba(24, 49, 79, 0.12);
+            box-shadow: inset 0 0 0 1px rgba(24, 49, 79, 0.08);
+            transition: background 180ms ease;
+        }
+
+        .mode-switch::after {
+            content: "";
+            position: absolute;
+            top: 5px;
+            left: 5px;
+            width: 32px;
+            height: 32px;
+            border-radius: 999px;
+            background: linear-gradient(135deg, #18314f, #32577e);
+            box-shadow: 0 10px 20px rgba(24, 49, 79, 0.2);
+            transition: transform 180ms ease, background 180ms ease;
+        }
+
+        .mode-toggle-checkbox:checked+.mode-switch {
+            background: rgba(59, 122, 109, 0.18);
+        }
+
+        .mode-toggle-checkbox:checked+.mode-switch::after {
+            transform: translateX(36px);
+            background: linear-gradient(135deg, #3b7a6d, #61a394);
+        }
+
+        .sample-picker {
+            display: grid;
+            gap: 0.35rem;
+            min-width: min(360px, 100%);
+        }
+
+        .sample-picker label,
+        .editor-head span,
+        .chat-meta,
+        .hint {
+            color: var(--ink-soft);
+            font-size: 0.85rem;
+        }
+
+        select,
+        textarea,
+        button {
+            font: inherit;
+        }
+
+        select,
+        textarea {
+            width: 100%;
+            border-radius: 18px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.7);
+            color: var(--ink);
+        }
+
+        select {
+            padding: 0.8rem 0.95rem;
+        }
+
+        .sample-preview {
+            display: grid;
+            grid-template-columns: 112px 1fr;
+            gap: 0.9rem;
+            align-items: center;
+            padding: 0.45rem;
+            border-radius: 20px;
+            background:
+                linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(246, 240, 230, 0.88));
+            border: 1px solid rgba(24, 49, 79, 0.08);
+            min-height: 138px;
+        }
+
+        .sample-preview[hidden] {
+            display: none;
+        }
+
+        .sample-preview img {
+            width: 112px;
+            height: 112px;
+            object-fit: cover;
+            border-radius: 16px;
+            background: rgba(24, 49, 79, 0.08);
+        }
+
+        .sample-preview strong {
+            display: block;
+            margin-bottom: 0.35rem;
+            font-size: 1rem;
+        }
+
+        .sample-preview a {
+            color: var(--navy);
+            text-decoration: none;
+            font-weight: 600;
+        }
+
+        .workspace {
+            --workspace-panel-height: clamp(560px, 70vh, 760px);
+            display: grid;
+            grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+            gap: 1rem;
+            align-items: stretch;
+        }
+
+        .panel {
+            overflow: hidden;
+        }
+
+        .panel-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 1rem;
+            padding: 1rem 1.15rem 0.85rem;
+            border-bottom: 1px solid rgba(24, 49, 79, 0.08);
+        }
+
+        .panel-head h2 {
+            margin: 0;
+            font-size: 1.08rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+        }
+
+        .chat-panel {
+            display: grid;
+            grid-template-rows: auto minmax(0, 1fr) auto;
+            height: var(--workspace-panel-height);
+        }
+
+        .chat-log {
+            padding: 1rem 1.1rem 1.1rem;
+            overflow: auto;
+            display: grid;
+            gap: 0.8rem;
+            align-content: start;
+            min-height: 0;
+            background:
+                linear-gradient(180deg, rgba(24, 49, 79, 0.03), rgba(255, 255, 255, 0));
+        }
+
+        .message {
+            display: grid;
+            gap: 0.3rem;
+            max-width: 92%;
+            animation: rise 220ms ease;
+        }
+
+        .message[data-role="user"] {
+            justify-self: end;
+        }
+
+        .message[data-role="assistant"] {
+            justify-self: start;
+        }
+
+        .message-tag {
+            font-size: 0.76rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--ink-soft);
+        }
+
+        .bubble {
+            white-space: pre-wrap;
+            line-height: 1.65;
+            padding: 0.9rem 1rem;
+            border-radius: 20px;
+            border: 1px solid rgba(24, 49, 79, 0.08);
+            background: rgba(255, 255, 255, 0.84);
+        }
+
+        .message[data-role="user"] .bubble {
+            background: linear-gradient(140deg, rgba(24, 49, 79, 0.95), rgba(50, 87, 126, 0.9));
+            color: #ffffff;
+            border-top-right-radius: 8px;
+        }
+
+        .message[data-role="assistant"] .bubble {
+            border-top-left-radius: 8px;
+            background: linear-gradient(180deg, rgba(255, 252, 247, 0.98), rgba(249, 243, 233, 0.9));
+        }
+
+        .chat-empty {
+            padding: 1rem;
+            border: 1px dashed rgba(24, 49, 79, 0.15);
+            border-radius: 20px;
+            color: var(--ink-soft);
+            background: rgba(255, 255, 255, 0.45);
+        }
+
+        .composer {
+            padding: 1rem 1.05rem 1.05rem;
+            border-top: 1px solid rgba(24, 49, 79, 0.08);
+            background: rgba(255, 255, 255, 0.5);
+        }
+
+        .composer textarea {
+            min-height: 96px;
+            max-height: 180px;
+            resize: vertical;
+            padding: 0.95rem 1rem;
+            line-height: 1.6;
+        }
+
+        .composer-actions {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 1rem;
+            margin-top: 0.8rem;
+        }
+
+        .head-meta {
+            color: var(--ink-soft);
+            font-size: 0.85rem;
+            text-align: right;
+        }
+
+        .button-row {
+            display: inline-flex;
+            justify-content: center;
+            gap: 0.6rem;
+        }
+
+        button {
+            border: 0;
+            cursor: pointer;
+            transition: transform 180ms ease, opacity 180ms ease, box-shadow 180ms ease;
+        }
+
+        button:hover {
+            transform: translateY(-1px);
+        }
+
+        button:disabled {
+            cursor: wait;
+            opacity: 0.6;
+            transform: none;
+        }
+
+        .primary {
+            padding: 0.82rem 1.2rem;
+            border-radius: 999px;
+            color: #fff;
+            background: linear-gradient(135deg, #d7812a, #c35a28);
+            box-shadow: 0 12px 24px rgba(195, 90, 40, 0.22);
+        }
+
+        .secondary {
+            padding: 0.82rem 1.05rem;
+            border-radius: 999px;
+            background: rgba(24, 49, 79, 0.08);
+            color: var(--navy);
+        }
+
+        .editor-stack {
+            display: grid;
+            grid-template-rows: minmax(0, 1fr) auto;
+            gap: 1rem;
+            min-height: 0;
+            height: var(--workspace-panel-height);
+        }
+
+        .editor-card {
+            display: grid;
+            grid-template-rows: auto minmax(0, 1fr);
+            min-height: 0;
+        }
+
+        .editor-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .editor-card textarea {
+            height: 100%;
+            min-height: 0;
+            padding: 1rem 1.05rem 1.1rem;
+            resize: none;
+            border: 0;
+            border-radius: 0;
+            background: transparent;
+            outline: none;
+            line-height: 1.68;
+        }
+
+        #summaryEditor {
+            overflow: auto;
+        }
+
+        #captionEditor {
+            min-height: 132px;
+            height: 132px;
+        }
+
+        .editor-card textarea:focus,
+        .composer textarea:focus,
+        select:focus {
+            outline: 2px solid rgba(215, 129, 42, 0.28);
+            outline-offset: 0;
+        }
+
+        .editor-meta {
+            padding: 0 1.15rem 1rem;
+            color: var(--ink-soft);
+            font-size: 0.83rem;
+        }
+
+        .generation-area {
+            display: grid;
+            gap: 0.85rem;
+            padding: 1rem 1.15rem 1rem;
+        }
+
+        .generation-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-items: center;
+            gap: 0.8rem;
+        }
+
+        .generated-preview {
+            display: grid;
+            place-items: center;
+            min-height: 180px;
+            padding: 0.7rem;
+            border-radius: 22px;
+            border: 1px solid rgba(24, 49, 79, 0.1);
+            background:
+                linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(246, 240, 230, 0.88));
+        }
+
+        .generated-preview[hidden] {
+            display: none;
+        }
+
+        .generated-preview img {
+            max-width: 100%;
+            max-height: 260px;
+            object-fit: contain;
+            border-radius: 16px;
+        }
+
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 20;
+            display: grid;
+            place-items: center;
+            padding: 1rem;
+            background: rgba(20, 27, 36, 0.54);
+            backdrop-filter: blur(8px);
+        }
+
+        .modal-overlay[hidden] {
+            display: none;
+        }
+
+        .modal-card {
+            width: min(900px, calc(100vw - 2rem));
+            max-height: calc(100vh - 2rem);
+            overflow: auto;
+            border-radius: 28px;
+            background: rgba(255, 252, 247, 0.96);
+            border: 1px solid rgba(255, 255, 255, 0.8);
+            box-shadow: 0 28px 70px rgba(24, 49, 79, 0.24);
+        }
+
+        .modal-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 1rem;
+            padding: 1rem 1.15rem;
+            border-bottom: 1px solid rgba(24, 49, 79, 0.08);
+        }
+
+        .modal-head h3 {
+            margin: 0;
+            font-size: 1.08rem;
+        }
+
+        .modal-body {
+            padding: 1.15rem;
+            display: grid;
+            gap: 1rem;
+        }
+
+        .modal-loading,
+        .modal-feedback {
+            display: grid;
+            place-items: center;
+            gap: 0.85rem;
+            min-height: 360px;
+            padding: 1rem;
+            text-align: center;
+            color: var(--ink-soft);
+        }
+
+        .modal-feedback {
+            border: 1px dashed rgba(154, 79, 69, 0.22);
+            border-radius: 22px;
+            background: rgba(154, 79, 69, 0.06);
+            color: #7d382f;
+        }
+
+        .spinner {
+            width: 54px;
+            height: 54px;
+            border-radius: 50%;
+            border: 5px solid rgba(24, 49, 79, 0.14);
+            border-top-color: var(--amber);
+            animation: spin 900ms linear infinite;
+        }
+
+        @keyframes spin {
+            from {
+                transform: rotate(0deg);
+            }
+
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .modal-result {
+            display: grid;
+            gap: 1rem;
+        }
+
+        .modal-image-wrap {
+            display: grid;
+            place-items: center;
+            min-height: 360px;
+            padding: 1rem;
+            border-radius: 24px;
+            border: 1px solid rgba(24, 49, 79, 0.1);
+            background:
+                linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(246, 240, 230, 0.92));
+        }
+
+        .modal-image-wrap img {
+            max-width: 100%;
+            max-height: min(62vh, 720px);
+            object-fit: contain;
+            border-radius: 18px;
+        }
+
+        .modal-actions {
+            display: flex;
+            justify-content: center;
+        }
+
+        .icon-button {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.6rem;
+        }
+
+        .icon-button svg {
+            width: 18px;
+            height: 18px;
+            flex: 0 0 18px;
+        }
+
+        @keyframes rise {
+            from {
+                opacity: 0;
+                transform: translateY(6px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @media (max-width: 1080px) {
+
+            .hero,
+            .control-card,
+            .workspace {
+                grid-template-columns: 1fr;
+            }
+
+            .editor-stack {
+                grid-template-rows: auto auto;
+                height: auto;
+            }
+
+            .chat-panel {
+                height: auto;
+                min-height: 520px;
+            }
+
+            .chat-log {
+                max-height: 420px;
+            }
+        }
+
+        @media (max-width: 720px) {
+            .page {
+                width: min(100vw - 1rem, 1380px);
+                padding-top: 0.8rem;
+            }
+
+            h1 {
+                font-size: 2.2rem;
+            }
+
+            .sample-preview {
+                grid-template-columns: 1fr;
+            }
+
+            .sample-preview img {
+                width: 100%;
+                height: 180px;
+            }
+
+            .composer-actions {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .button-row {
+                width: 100%;
+                justify-content: stretch;
+            }
+
+            .button-row button {
+                flex: 1;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="page">
+        <section class="control-card">
+            <div class="control-stack">
+                <div class="sample-picker">
+                    <label for="sampleSelect">チャット選択</label>
+                    <select id="sampleSelect">
+                        <option value="__new__">新規チャット</option>
+                        {% if demo_samples %}
+                        {% for sample in demo_samples %}
+                        <option value="{{ sample }}">{{ sample }}</option>
+                        {% endfor %}
+                        {% endif %}
+                    </select>
+                </div>
+            </div>
+        </section>
+        <section class="workspace">
+            <article class="panel chat-panel">
+                <div class="panel-head">
+                    <div>
+                        <h2>Chat Workspace</h2>
+                        <div class="chat-meta" id="chatMeta">手法説明の入力と追加回答</div>
+                    </div>
+                    <div class="head-meta" id="draftMeta">まだ送信されていません。</div>
+                </div>
+
+                <div class="chat-log" id="chatLog" aria-live="polite"></div>
+
+                <div class="composer">
+                    <textarea id="chatInput" placeholder="論文の手法説明を書いてください。足りない情報があれば追加で質問します。"></textarea>
+                    <div class="composer-actions">
+                        <div class="button-row">
+                            <button class="primary" id="sendButton" type="button">送信して判定</button>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <div class="editor-stack">
+                <article class="panel editor-card">
+                    <div class="panel-head editor-head">
+                        <div>
+                            <h2>整理された説明</h2>
+                            <span>Markdown 文字列として編集できます。</span>
+                        </div>
+                    </div>
+                    <textarea id="summaryEditor" placeholder="十分な説明が集まると、ここに整理済み Markdown が表示されます。"></textarea>
+                </article>
+
+                <article class="panel editor-card">
+                    <div class="panel-head editor-head">
+                        <div>
+                            <h2>図キャプション</h2>
+                            <span>文字列として編集できます。</span>
+                        </div>
+                    </div>
+                    <textarea id="captionEditor" placeholder="図キャプションがここに入ります。"></textarea>
+                    <div class="generation-area">
+                        <div class="generation-toolbar">
+                            <button class="primary" id="generateButton" type="button">Generate Figure</button>
+                        </div>
+                    </div>
+                </article>
+            </div>
+        </section>
+
+        <div class="modal-overlay" id="generationModal" hidden>
+            <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="generationModalTitle">
+                <div class="modal-head">
+                    <h3 id="generationModalTitle">Generated Figure</h3>
+                    <button class="secondary" id="closeModalButton" type="button">閉じる</button>
+                </div>
+                <div class="modal-body">
+                    <div class="modal-loading" id="modalLoading">
+                        <div class="spinner" aria-hidden="true"></div>
+                        <div id="modalLoadingText">図を生成しています。しばらくお待ちください。</div>
+                    </div>
+                    <div class="modal-feedback" id="modalFeedback" hidden></div>
+                    <div class="modal-result" id="modalResult" hidden>
+                        <div class="modal-image-wrap">
+                            <img id="modalImage" alt="generated figure">
+                        </div>
+                        <div class="modal-actions">
+                            <button class="secondary icon-button" id="saveSvgButton" type="button" disabled>
+                                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                    <path d="M12 3V15" stroke="currentColor" stroke-width="1.8"
+                                        stroke-linecap="round" />
+                                    <path d="M7.5 10.5L12 15L16.5 10.5" stroke="currentColor" stroke-width="1.8"
+                                        stroke-linecap="round" stroke-linejoin="round" />
+                                    <path d="M5 20H19" stroke="currentColor" stroke-width="1.8"
+                                        stroke-linecap="round" />
+                                </svg>
+                                <span>Save SVG</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const demoSamples = {{ demo_samples | tojson }};
+
+        const state = {
+            mode: "new",
+            sampleName: "",
+            compiledInstruction: "",
+            messages: [],
+            busy: false,
+            generatedImageDataUrl: "",
+            generatedImageWidth: 0,
+            generatedImageHeight: 0,
+        };
+
+        const elements = {
+            statusBadge: document.getElementById("statusBadge"),
+            statusText: document.getElementById("statusText"),
+            sampleSelect: document.getElementById("sampleSelect"),
+            samplePreview: document.getElementById("samplePreview"),
+            samplePreviewImage: document.getElementById("samplePreviewImage"),
+            samplePreviewTitle: document.getElementById("samplePreviewTitle"),
+            samplePreviewMeta: document.getElementById("samplePreviewMeta"),
+            samplePreviewLinks: document.getElementById("samplePreviewLinks"),
+            chatLog: document.getElementById("chatLog"),
+            chatInput: document.getElementById("chatInput"),
+            chatMeta: document.getElementById("chatMeta"),
+            draftMeta: document.getElementById("draftMeta"),
+            sendButton: document.getElementById("sendButton"),
+            generateButton: document.getElementById("generateButton"),
+            summaryEditor: document.getElementById("summaryEditor"),
+            captionEditor: document.getElementById("captionEditor"),
+            generateHint: document.getElementById("generateHint"),
+            generationMeta: document.getElementById("generationMeta"),
+            generationModal: document.getElementById("generationModal"),
+            closeModalButton: document.getElementById("closeModalButton"),
+            modalLoading: document.getElementById("modalLoading"),
+            modalLoadingText: document.getElementById("modalLoadingText"),
+            modalFeedback: document.getElementById("modalFeedback"),
+            modalResult: document.getElementById("modalResult"),
+            modalImage: document.getElementById("modalImage"),
+            saveSvgButton: document.getElementById("saveSvgButton"),
+        };
+
+        function setBusy(isBusy) {
+            state.busy = isBusy;
+            elements.sendButton.disabled = isBusy;
+            elements.generateButton.disabled = isBusy;
+            elements.sampleSelect.disabled = isBusy;
+        }
+
+        function setStatus(text, tone, detail) {
+            if (elements.statusBadge) {
+                elements.statusBadge.textContent = text;
+                elements.statusBadge.dataset.tone = tone;
+            }
+            if (elements.statusText) {
+                elements.statusText.textContent = detail;
+            }
+        }
+
+        function renderMessages() {
+            if (state.messages.length === 0) {
+                elements.chatLog.innerHTML = '<div class="chat-empty">ここに対話履歴が表示されます。</div>';
+                return;
+            }
+
+            elements.chatLog.innerHTML = state.messages.map((message) => {
+                const roleLabel = message.role === "user" ? "User" : "Assistant";
+                return `
+                    <article class="message" data-role="${message.role}">
+                        <div class="message-tag">${roleLabel}</div>
+                        <div class="bubble">${escapeHtml(message.text)}</div>
+                    </article>
+                `;
+            }).join("");
+
+            elements.chatLog.scrollTop = elements.chatLog.scrollHeight;
+        }
+
+        function escapeHtml(text) {
+            return text
+                .replaceAll("&", "&amp;")
+                .replaceAll("<", "&lt;")
+                .replaceAll(">", "&gt;")
+                .replaceAll('"', "&quot;")
+                .replaceAll("'", "&#39;")
+                .replaceAll("\n", "<br>");
+        }
+
+        function pushMessage(role, text) {
+            if (!text) {
+                return;
+            }
+            state.messages.push({ role, text });
+            renderMessages();
+        }
+
+        function syncDraftMeta() {
+            const length = state.compiledInstruction.trim().length;
+            if (length === 0) {
+                elements.draftMeta.textContent = "まだ送信されていません。";
+                return;
+            }
+            elements.draftMeta.textContent = `現在の統合説明: ${length} characters`;
+        }
+
+        function syncGenerateHint() {
+            if (!elements.generateHint) {
+                return;
+            }
+            if (state.mode === "existing") {
+                elements.generateHint.textContent = "既存チャットでは generate 時に `is_demo=True` を渡します。";
+                return;
+            }
+            elements.generateHint.textContent = "新規チャットでは generate 時に `is_demo=False` を渡します。";
+        }
+
+        function clearGeneratedImage() {
+            state.generatedImageDataUrl = "";
+            state.generatedImageWidth = 0;
+            state.generatedImageHeight = 0;
+            elements.modalImage.removeAttribute("src");
+            elements.modalLoading.hidden = false;
+            elements.modalFeedback.hidden = true;
+            elements.modalFeedback.textContent = "";
+            elements.modalResult.hidden = true;
+            elements.saveSvgButton.disabled = true;
+            if (elements.generationMeta) {
+                elements.generationMeta.textContent = "生成結果はポップアップに表示されます。";
+            }
+        }
+
+        function openGenerationModal() {
+            elements.generationModal.hidden = false;
+            document.body.classList.add("modal-open");
+        }
+
+        function closeGenerationModal() {
+            elements.generationModal.hidden = true;
+            document.body.classList.remove("modal-open");
+        }
+
+        function showModalLoading(message) {
+            openGenerationModal();
+            elements.modalLoading.hidden = false;
+            elements.modalLoadingText.textContent = message;
+            elements.modalFeedback.hidden = true;
+            elements.modalFeedback.textContent = "";
+            elements.modalResult.hidden = true;
+            elements.saveSvgButton.disabled = true;
+        }
+
+        function showModalError(message) {
+            openGenerationModal();
+            elements.modalLoading.hidden = true;
+            elements.modalResult.hidden = true;
+            elements.modalFeedback.hidden = false;
+            elements.modalFeedback.textContent = message;
+            elements.saveSvgButton.disabled = true;
+        }
+
+        function loadModalImage(dataUrl) {
+            return new Promise((resolve, reject) => {
+                const image = elements.modalImage;
+                image.onload = () => {
+                    resolve({
+                        width: image.naturalWidth || 0,
+                        height: image.naturalHeight || 0,
+                    });
+                };
+                image.onerror = () => reject(new Error("生成画像を表示できませんでした。"));
+                image.src = dataUrl;
+            });
+        }
+
+        async function showModalResult(dataUrl) {
+            openGenerationModal();
+            const dimensions = await loadModalImage(dataUrl);
+            state.generatedImageDataUrl = dataUrl;
+            state.generatedImageWidth = dimensions.width;
+            state.generatedImageHeight = dimensions.height;
+            elements.modalLoading.hidden = true;
+            elements.modalFeedback.hidden = true;
+            elements.modalFeedback.textContent = "";
+            elements.modalResult.hidden = false;
+            elements.saveSvgButton.disabled = false;
+        }
+
+        function escapeSvgAttribute(text) {
+            return String(text)
+                .replaceAll("&", "&amp;")
+                .replaceAll('"', "&quot;")
+                .replaceAll("<", "&lt;")
+                .replaceAll(">", "&gt;");
+        }
+
+        function downloadGeneratedSvg() {
+            if (!state.generatedImageDataUrl) {
+                return;
+            }
+
+            const width = state.generatedImageWidth || 1024;
+            const height = state.generatedImageHeight || 768;
+            const svgText = [
+                '<?xml version="1.0" encoding="UTF-8"?>',
+                `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`,
+                `<image href="${escapeSvgAttribute(state.generatedImageDataUrl)}" width="${width}" height="${height}" preserveAspectRatio="xMidYMid meet" />`,
+                "</svg>",
+            ].join("");
+
+            const blob = new Blob([svgText], { type: "image/svg+xml;charset=utf-8" });
+            const downloadUrl = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            const filenameBase = state.sampleName || "generated_figure";
+            link.href = downloadUrl;
+            link.download = `${filenameBase}.svg`;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(downloadUrl);
+        }
+
+        function buildLoadedAssistantMessage(data) {
+            const parts = [
+                "説明は図示可能な粒度です。右側の要約とキャプションを必要に応じて編集してください。"
+            ];
+
+            if (data.caption) {
+                parts.push("", "図キャプション:", data.caption);
+            }
+
+            parts.push("", "必要であれば追加説明を続けて入力してください。");
+            return parts.join("\n");
+        }
+
+        function resetNewChat() {
+            state.mode = "new";
+            state.sampleName = "";
+            state.compiledInstruction = "";
+            state.messages = [
+                {
+                    role: "assistant",
+                    text: "論文の手法説明を入力してください。図示に必要な情報が不足していれば、追加で質問します。",
+                },
+            ];
+            elements.summaryEditor.value = "";
+            elements.captionEditor.value = "";
+            elements.chatInput.value = "";
+            if (elements.samplePreview) {
+                elements.samplePreview.hidden = true;
+            }
+            if (elements.samplePreviewImage) {
+                elements.samplePreviewImage.removeAttribute("src");
+            }
+            if (elements.samplePreviewLinks) {
+                elements.samplePreviewLinks.innerHTML = "";
+            }
+            clearGeneratedImage();
+            closeGenerationModal();
+            elements.sampleSelect.value = "__new__";
+            elements.chatMeta.textContent = "手法説明の入力と追加回答";
+            renderMessages();
+            syncDraftMeta();
+            syncGenerateHint();
+            setStatus("待機中", "idle", "新しい手法説明を受け付けています。");
+        }
+
+        async function loadSample(sampleName) {
+            if (!sampleName) {
+                return;
+            }
+
+            setBusy(true);
+            setStatus("読込中", "working", "既存チャットの内容を取得しています。");
+
+            try {
+                const response = await fetch(`/api/demo-sample?name=${encodeURIComponent(sampleName)}`);
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || "既存チャットを読み込めませんでした。");
+                }
+
+                state.mode = "existing";
+                state.sampleName = data.name;
+                state.compiledInstruction = data.description || "";
+                state.messages = [
+                    {
+                        role: "user",
+                        text: data.description || "（既存の入力はありません）",
+                    },
+                    {
+                        role: "assistant",
+                        text: buildLoadedAssistantMessage(data),
+                    },
+                ];
+                elements.summaryEditor.value = data.description || "";
+                elements.captionEditor.value = data.caption || "";
+                elements.chatInput.value = "";
+                clearGeneratedImage();
+                closeGenerationModal();
+                elements.sampleSelect.value = data.name;
+                elements.chatMeta.textContent = `読み込み済み: ${data.name}`;
+                if (elements.samplePreview) {
+                    elements.samplePreview.hidden = false;
+                }
+                if (elements.samplePreviewTitle) {
+                    elements.samplePreviewTitle.textContent = data.name;
+                }
+                if (elements.samplePreviewMeta) {
+                    elements.samplePreviewMeta.textContent = "demo_sample/ から既存の説明とキャプションを反映しました。";
+                }
+                if (elements.samplePreviewLinks) {
+                    elements.samplePreviewLinks.innerHTML = "";
+                }
+
+                if (elements.samplePreviewImage) {
+                    if (data.image_url) {
+                        elements.samplePreviewImage.src = data.image_url;
+                        elements.samplePreviewImage.alt = `${data.name} preview`;
+                        if (elements.samplePreviewLinks) {
+                            elements.samplePreviewLinks.innerHTML += `<a href="${data.image_url}" target="_blank" rel="noreferrer">PNG を開く</a>`;
+                        }
+                    } else {
+                        elements.samplePreviewImage.removeAttribute("src");
+                    }
+                }
+
+                if (data.svg_url && elements.samplePreviewLinks) {
+                    const separator = elements.samplePreviewLinks.innerHTML ? " / " : "";
+                    elements.samplePreviewLinks.innerHTML += `${separator}<a href="${data.svg_url}" target="_blank" rel="noreferrer">SVG を開く</a>`;
+                }
+
+                renderMessages();
+                syncDraftMeta();
+                syncGenerateHint();
+                setStatus("既存チャット", "ready", `${data.name} を編集可能な状態で読み込みました。`);
+            } catch (error) {
+                setStatus("読込失敗", "needs-info", error.message);
+                pushMessage("assistant", `既存チャットの読込に失敗しました: ${error.message}`);
+            } finally {
+                setBusy(false);
+            }
+        }
+
+        async function generateFigure() {
+            const description = elements.summaryEditor.value.trim() || state.compiledInstruction.trim();
+            const caption = elements.captionEditor.value.trim();
+
+            if (!description) {
+                pushMessage("assistant", "図生成の前に、整理された説明を右側に用意してください。");
+                return;
+            }
+            if (!caption) {
+                pushMessage("assistant", "図生成の前に、図キャプションを入力してください。");
+                return;
+            }
+
+            setBusy(true);
+            clearGeneratedImage();
+            showModalLoading("図を生成しています。しばらくお待ちください。");
+            setStatus(
+                "生成中",
+                "working",
+                "PaperBanana を呼び出して図を生成しています。"
+            );
+
+            try {
+                const response = await fetch("/api/generate", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        description,
+                        caption,
+                        mode: state.mode,
+                        sample_name: state.sampleName,
+                    }),
+                });
+
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.error || "図生成に失敗しました。");
+                }
+
+                await showModalResult(data.image_data_url);
+                if (elements.generationMeta) {
+                    elements.generationMeta.textContent = data.is_demo
+                        ? "ポップアップに PaperBanana.generate(..., is_demo=True) の結果を表示しています。"
+                        : "ポップアップに PaperBanana.generate(..., is_demo=False) の結果を表示しています。";
+                }
+
+                pushMessage(
+                    "assistant",
+                    data.is_demo
+                        ? "既存チャットのため、PaperBanana を demo モードで実行しました。"
+                        : "PaperBanana による図生成を実行しました。"
+                );
+                setStatus(
+                    "生成完了",
+                    "ready",
+                    data.is_demo
+                        ? "既存チャットなので demo 画像を返しました。"
+                        : "PaperBanana の生成結果をポップアップに表示しました。"
+                );
+            } catch (error) {
+                pushMessage("assistant", `図生成でエラーが発生しました: ${error.message}`);
+                showModalError(error.message);
+                setStatus("生成失敗", "needs-info", error.message);
+            } finally {
+                setBusy(false);
+            }
+        }
+
+        async function submitInstruction() {
+            const currentMessage = elements.chatInput.value.trim();
+            if (!currentMessage || state.busy) {
+                return;
+            }
+
+            pushMessage("user", currentMessage);
+            state.compiledInstruction = [state.compiledInstruction, currentMessage]
+                .filter((value) => value && value.trim())
+                .join("\n\n");
+            elements.chatInput.value = "";
+            syncDraftMeta();
+
+            setBusy(true);
+            setStatus("解析中", "working", "説明の十分性を判定しています。");
+
+            try {
+                const response = await fetch("/api/review", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        instruction: state.compiledInstruction,
+                        mode: state.mode,
+                        sample_name: state.sampleName,
+                    }),
+                });
+
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.error || "判定に失敗しました。");
+                }
+
+                pushMessage("assistant", data.assistant_message || "判定結果を受け取りました。");
+
+                if (data.markdown_text) {
+                    elements.summaryEditor.value = data.markdown_text;
+                }
+
+                if (data.figure_caption) {
+                    elements.captionEditor.value = data.figure_caption;
+                }
+
+                if (data.is_sufficiently_detailed) {
+                    setStatus("図示可能", "ready", "要約とキャプションを右側へ反映しました。必要に応じて編集してください。");
+                } else {
+                    setStatus("追加情報が必要", "needs-info", "不足情報への回答を続けて入力してください。");
+                }
+            } catch (error) {
+                pushMessage("assistant", `エラーが発生しました: ${error.message}`);
+                setStatus("エラー", "needs-info", error.message);
+            } finally {
+                setBusy(false);
+            }
+        }
+
+        function switchMode(mode) {
+            if (mode === "__new__") {
+                resetNewChat();
+                return;
+            }
+            state.mode = "existing";
+            state.sampleName = mode;
+            loadSample(mode);
+        }
+
+        elements.sampleSelect.addEventListener("change", (event) => {
+            switchMode(event.target.value);
+        });
+
+        elements.summaryEditor.addEventListener("input", () => {
+            state.compiledInstruction = elements.summaryEditor.value.trim();
+            syncDraftMeta();
+        });
+
+        elements.sendButton.addEventListener("click", submitInstruction);
+        elements.generateButton.addEventListener("click", generateFigure);
+        elements.saveSvgButton.addEventListener("click", downloadGeneratedSvg);
+        elements.closeModalButton.addEventListener("click", closeGenerationModal);
+
+        elements.chatInput.addEventListener("keydown", (event) => {
+            if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+                event.preventDefault();
+                submitInstruction();
+            }
+            if (event.key === "Escape") {
+                closeGenerationModal();
+            }
+        });
+
+        elements.generationModal.addEventListener("click", (event) => {
+            if (event.target === elements.generationModal) {
+                closeGenerationModal();
+            }
+        });
+
+        resetNewChat();
+        syncGenerateHint();
+    </script>
+</body>
+
+</html>

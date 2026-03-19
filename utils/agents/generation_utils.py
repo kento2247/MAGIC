@@ -16,26 +16,25 @@
 Utility functions for interacting with Gemini and Claude APIs, image processing, and PDF handling.
 """
 
-import json
 import asyncio
 import base64
-from io import BytesIO
-from functools import partial
+import json
+import os
 from ast import literal_eval
-from typing import List, Dict, Any
+from functools import partial
+from io import BytesIO
+from pathlib import Path
+from typing import Any, Dict, List
 
-import httpx
 import aiofiles
-from PIL import Image
+import httpx
+import yaml
+from anthropic import AsyncAnthropic
+from dotenv import load_dotenv
 from google import genai
 from google.genai import types
-from anthropic import AsyncAnthropic
 from openai import AsyncOpenAI
-
-import os
-
-import yaml
-from pathlib import Path
+from PIL import Image
 
 # Load config
 config_path = Path(__file__).parent.parent / "configs" / "model_config.yaml"
@@ -44,11 +43,14 @@ if config_path.exists():
     with open(config_path, "r") as f:
         model_config = yaml.safe_load(f) or {}
 
+
 def get_config_val(section, key, env_var, default=""):
+    load_dotenv()  # Load environment variables from .env file if present
     val = os.getenv(env_var)
     if not val and section in model_config:
         val = model_config[section].get(key)
     return val or default
+
 
 # Initialize clients lazily or with robust defaults
 api_key = get_config_val("api_keys", "google_api_key", "GOOGLE_API_KEY", "")
@@ -60,7 +62,9 @@ else:
     gemini_client = None
 
 
-anthropic_api_key = get_config_val("api_keys", "anthropic_api_key", "ANTHROPIC_API_KEY", "")
+anthropic_api_key = get_config_val(
+    "api_keys", "anthropic_api_key", "ANTHROPIC_API_KEY", ""
+)
 if anthropic_api_key:
     anthropic_client = AsyncAnthropic(api_key=anthropic_api_key)
     print("Initialized Anthropic Client with API Key")
@@ -76,7 +80,9 @@ else:
     print("Warning: Could not initialize OpenAI Client. Missing credentials.")
     openai_client = None
 
-openrouter_api_key = get_config_val("api_keys", "openrouter_api_key", "OPENROUTER_API_KEY", "")
+openrouter_api_key = get_config_val(
+    "api_keys", "openrouter_api_key", "OPENROUTER_API_KEY", ""
+)
 if openrouter_api_key:
     openrouter_client = AsyncOpenAI(
         base_url="https://openrouter.ai/api/v1",
@@ -86,7 +92,6 @@ if openrouter_api_key:
 else:
     print("Warning: Could not initialize OpenRouter Client. Missing credentials.")
     openrouter_client = None
-
 
 
 def _convert_to_gemini_parts(contents: List[Dict[str, Any]]) -> List[types.Part]:
@@ -148,10 +153,7 @@ async def call_gemini_with_retry_async(
             )
 
             # If we are using Image Generation models to generate images
-            if (
-                "nanoviz" in model_name
-                or "image" in model_name
-            ):
+            if "nanoviz" in model_name or "image" in model_name:
                 raw_response_list = []
                 if not response.candidates or not response.candidates[0].content.parts:
                     print(
@@ -184,10 +186,10 @@ async def call_gemini_with_retry_async(
 
         except Exception as e:
             context_msg = f" for {error_context}" if error_context else ""
-            
+
             # Exponential backoff (capped at 30s)
-            current_delay = min(retry_delay * (2 ** attempt), 30)
-            
+            current_delay = min(retry_delay * (2**attempt), 30)
+
             print(
                 f"Attempt {attempt + 1} for model {model_name} failed{context_msg}: {e}. Retrying in {current_delay} seconds..."
             )
@@ -201,6 +203,7 @@ async def call_gemini_with_retry_async(
     if len(result_list) < target_candidate_count:
         result_list.extend(["Error"] * (target_candidate_count - len(result_list)))
     return result_list
+
 
 def _convert_to_claude_format(contents: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
@@ -221,14 +224,14 @@ def _convert_to_claude_format(contents: List[Dict[str, Any]]) -> List[Dict[str, 
 def _convert_to_openai_format(contents: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
     Converts the generic content list (Claude format) to OpenAI's API format.
-    
+
     Claude format:
     [
         {"type": "text", "text": "some text"},
         {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": "..."}},
         ...
     ]
-    
+
     OpenAI format:
     [
         {"type": "text", "text": "some text"},
@@ -246,17 +249,15 @@ def _convert_to_openai_format(contents: List[Dict[str, Any]]) -> List[Dict[str, 
                 media_type = source.get("media_type", "image/jpeg")
                 data = source.get("data", "")
                 data_url = f"data:{media_type};base64,{data}"
-                openai_contents.append({
-                    "type": "image_url",
-                    "image_url": {"url": data_url}
-                })
+                openai_contents.append(
+                    {"type": "image_url", "image_url": {"url": data_url}}
+                )
             elif "image_base64" in item:
                 # Shorthand format used by planner_agent
                 data_url = f"data:image/jpeg;base64,{item['image_base64']}"
-                openai_contents.append({
-                    "type": "image_url",
-                    "image_url": {"url": data_url}
-                })
+                openai_contents.append(
+                    {"type": "image_url", "image_url": {"url": data_url}}
+                )
     return openai_contents
 
 
@@ -326,9 +327,7 @@ async def call_claude_with_retry_async(
                 model=model_name,
                 max_tokens=max_output_tokens,
                 temperature=temperature,
-                messages=[
-                    {"role": "user", "content": valid_claude_contents}
-                ],
+                messages=[{"role": "user", "content": valid_claude_contents}],
                 system=system_prompt,
             )
             for _ in range(remaining_candidates)
@@ -343,6 +342,7 @@ async def call_claude_with_retry_async(
                 response_text_list.append(res.content[0].text)
 
     return response_text_list
+
 
 async def call_openai_with_retry_async(
     model_name, contents, config, max_attempts=5, retry_delay=30, error_context=""
@@ -372,7 +372,7 @@ async def call_openai_with_retry_async(
                 model=model_name,
                 messages=[
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": openai_contents}
+                    {"role": "user", "content": openai_contents},
                 ],
                 temperature=temperature,
                 max_completion_tokens=max_completion_tokens,
@@ -416,7 +416,7 @@ async def call_openai_with_retry_async(
                 model=model_name,
                 messages=[
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": valid_openai_contents}
+                    {"role": "user", "content": valid_openai_contents},
                 ],
                 temperature=temperature,
                 max_completion_tokens=max_completion_tokens,
@@ -445,7 +445,7 @@ async def call_openai_image_generation_with_retry_async(
     quality = config.get("quality", "high")
     background = config.get("background", "opaque")
     output_format = config.get("output_format", "png")
-    
+
     # Base parameters for all models
     gen_params = {
         "model": model_name,
@@ -453,23 +453,27 @@ async def call_openai_image_generation_with_retry_async(
         "n": 1,
         "size": size,
     }
-    
+
     # Add GPT-Image specific parameters
-    gen_params.update({
-        "quality": quality,
-        "background": background,
-        "output_format": output_format,
-    })
+    gen_params.update(
+        {
+            "quality": quality,
+            "background": background,
+            "output_format": output_format,
+        }
+    )
 
     for attempt in range(max_attempts):
         try:
             response = await openai_client.images.generate(**gen_params)
-            
+
             # OpenAI images.generate returns a list of images in response.data
             if response.data and response.data[0].b64_json:
                 return [response.data[0].b64_json]
             else:
-                print(f"[Warning]: Failed to generate image via OpenAI, no data returned.")
+                print(
+                    f"[Warning]: Failed to generate image via OpenAI, no data returned."
+                )
                 if attempt < max_attempts - 1:
                     await asyncio.sleep(retry_delay)
                 continue
@@ -537,7 +541,7 @@ async def call_openrouter_with_retry_async(
         except Exception as e:
             error_str = str(e).lower()
             context_msg = f" for {error_context}" if error_context else ""
-            current_delay = min(retry_delay * (2 ** attempt), 60)
+            current_delay = min(retry_delay * (2**attempt), 60)
             print(
                 f"OpenRouter attempt {attempt + 1} failed{context_msg}: {error_str}. "
                 f"Retrying in {current_delay}s..."
@@ -586,9 +590,7 @@ async def call_openrouter_image_generation_with_retry_async(
     in choices[0].message.images as data URLs.
     """
     if not openrouter_api_key:
-        raise RuntimeError(
-            "OpenRouter client was not initialized: missing API key."
-        )
+        raise RuntimeError("OpenRouter client was not initialized: missing API key.")
 
     system_prompt = config.get("system_prompt", "")
     temperature = config.get("temperature", 1.0)
@@ -634,7 +636,9 @@ async def call_openrouter_image_generation_with_retry_async(
 
             choices = data.get("choices", [])
             if not choices:
-                print(f"[Warning]: OpenRouter image generation returned no choices, retrying...")
+                print(
+                    f"[Warning]: OpenRouter image generation returned no choices, retrying..."
+                )
                 if attempt < max_attempts - 1:
                     await asyncio.sleep(retry_delay)
                 continue
@@ -672,14 +676,16 @@ async def call_openrouter_image_generation_with_retry_async(
                     if b64_data:
                         return [b64_data]
 
-            print(f"[Warning]: OpenRouter image generation returned no images, retrying...")
+            print(
+                f"[Warning]: OpenRouter image generation returned no images, retrying..."
+            )
             if attempt < max_attempts - 1:
                 await asyncio.sleep(retry_delay)
             continue
 
         except httpx.HTTPStatusError as e:
             context_msg = f" for {error_context}" if error_context else ""
-            current_delay = min(retry_delay * (2 ** attempt), 60)
+            current_delay = min(retry_delay * (2**attempt), 60)
             print(
                 f"OpenRouter image gen attempt {attempt + 1} failed{context_msg}: "
                 f"HTTP {e.response.status_code} - {e.response.text}. "
@@ -692,7 +698,7 @@ async def call_openrouter_image_generation_with_retry_async(
                 return ["Error"]
         except Exception as e:
             context_msg = f" for {error_context}" if error_context else ""
-            current_delay = min(retry_delay * (2 ** attempt), 60)
+            current_delay = min(retry_delay * (2**attempt), 60)
             print(
                 f"OpenRouter image gen attempt {attempt + 1} failed{context_msg}: {e}. "
                 f"Retrying in {current_delay}s..."
@@ -735,7 +741,7 @@ async def call_model_with_retry_async(
     # Explicit provider prefix overrides auto-detection
     if model_name.startswith("openrouter/"):
         provider = "openrouter"
-        actual_model = model_name[len("openrouter/"):]
+        actual_model = model_name[len("openrouter/") :]
     elif model_name.startswith("claude-"):
         provider = "anthropic"
         actual_model = model_name
@@ -772,10 +778,16 @@ async def call_model_with_retry_async(
 
     # Convert Gemini GenerateContentConfig -> dict for OpenAI/Claude/OpenRouter
     cfg_dict = {
-        "system_prompt": config.system_instruction if hasattr(config, "system_instruction") else "",
+        "system_prompt": (
+            config.system_instruction if hasattr(config, "system_instruction") else ""
+        ),
         "temperature": config.temperature if hasattr(config, "temperature") else 1.0,
-        "candidate_num": config.candidate_count if hasattr(config, "candidate_count") else 1,
-        "max_completion_tokens": config.max_output_tokens if hasattr(config, "max_output_tokens") else 50000,
+        "candidate_num": (
+            config.candidate_count if hasattr(config, "candidate_count") else 1
+        ),
+        "max_completion_tokens": (
+            config.max_output_tokens if hasattr(config, "max_output_tokens") else 50000
+        ),
     }
 
     call_fn = {

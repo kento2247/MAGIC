@@ -24,7 +24,7 @@ import re
 from google.genai import types
 
 from prompts import diagram_eval_prompts, plot_eval_prompts
-from utils.generation_utils import (
+from utils.agents.generation_utils import (
     call_gemini_with_retry_async,
     call_claude_with_retry_async,
     call_openai_with_retry_async,

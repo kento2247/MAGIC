@@ -6,16 +6,16 @@ from pathlib import Path
 
 from PIL import Image
 
-from agents.critic_agent import CriticAgent
+from utils import config
+from utils.agents.critic_agent import CriticAgent
 
 # agents / utils はそのまま利用
-from agents.planner_agent import PlannerAgent
-from agents.polish_agent import PolishAgent
-from agents.retriever_agent import RetrieverAgent
-from agents.stylist_agent import StylistAgent
-from agents.vanilla_agent import VanillaAgent
-from agents.visualizer_agent import VisualizerAgent
-from utils import config
+from utils.agents.planner_agent import PlannerAgent
+from utils.agents.polish_agent import PolishAgent
+from utils.agents.retriever_agent import RetrieverAgent
+from utils.agents.stylist_agent import StylistAgent
+from utils.agents.vanilla_agent import VanillaAgent
+from utils.agents.visualizer_agent import VisualizerAgent
 from utils.paperviz_processor import PaperVizProcessor
 
 
@@ -103,6 +103,22 @@ class PaperBanana:
         image_data = base64.b64decode(b64_str)
         return Image.open(BytesIO(image_data))
 
+    def _load_demo_image(self) -> Image.Image:
+        candidate_paths = [Path(__file__).parent / "assets" / "sample.png"]
+        demo_sample_root = Path(__file__).resolve().parent.parent / "demo_sample"
+        if demo_sample_root.exists():
+            candidate_paths.extend(sorted(demo_sample_root.glob("*/sample.png")))
+
+        asset_root = Path(__file__).resolve().parent.parent / "assets"
+        if asset_root.exists():
+            candidate_paths.extend(sorted(asset_root.glob("*.png")))
+
+        for path in candidate_paths:
+            if path.exists():
+                return Image.open(path)
+
+        raise FileNotFoundError("No demo image available for PaperBanana demo mode.")
+
     def generate(self, description: str, caption: str, is_demo: bool) -> Image.Image:
         """
         Args:
@@ -114,13 +130,13 @@ class PaperBanana:
         """
 
         if is_demo:
-            delay_minutes = 3
+            delay_minutes = 0.05
             print(f"📄 Description: {description}")
             print(f"🖼️ Caption: {caption}")
             time_to_wait = delay_minutes * 60
             print(f"⏳ Simulating processing time of {delay_minutes} minutes...")
             time.sleep(time_to_wait)
-            image = Image.open(Path(__file__).parent / "assets" / "sample.png")
+            image = self._load_demo_image()
             print("✅ Returning demo image.")
 
         else:

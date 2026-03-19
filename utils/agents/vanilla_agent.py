@@ -24,7 +24,8 @@ import base64, io, asyncio
 from PIL import Image
 import json
 
-from utils import generation_utils, image_utils
+from utils import image_utils
+from utils.agents import generation_utils
 from .base_agent import BaseAgent
 
 

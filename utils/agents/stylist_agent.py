@@ -24,7 +24,7 @@ from google.genai import types
 import base64, io, asyncio
 from PIL import Image
 
-from utils import generation_utils
+from utils.agents import generation_utils
 from .base_agent import BaseAgent
 
 

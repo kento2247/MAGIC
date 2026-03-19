@@ -1,413 +1,364 @@
+from __future__ import annotations
+
 import json
 import os
-from functools import lru_cache
+import re
+from dataclasses import dataclass
 from typing import Any
 
-from openai import OpenAI
+try:
+    from openai import OpenAI
+except ModuleNotFoundError:
+    OpenAI = None
 
-from utils.PaperBanana import PaperBanana
 
-DEFAULT_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
+@dataclass(slots=True)
+class ReviewResult:
+    is_sufficiently_detailed: bool
+    additional_questions: str | None = None
 
-SYSTEM_PROMPT = """
-あなたは、論文の手法説明を図示可能なレベルまで整理するアシスタントです。
-目的は、論文の手法をあとから図に起こせるように、説明の充足度を判定し、
-足りない情報だけをユーザに質問することです。
 
-必ず JSON オブジェクトのみを返してください。キーは以下に固定します。
-- organized_markdown: str
-- is_sufficient: bool
-- missing_information: list[str]
-- follow_up_questions: list[str]
-- caption: str
+@dataclass(slots=True)
+class ConvertResult:
+    markdown_text: str
+    figure_caption: str
 
-判定ルール:
-- 図示に必要な構成要素、入出力、処理順序、関係性、分岐、繰り返し、重要ラベルが十分にわかるなら is_sufficient=true。
-- 情報が足りない場合は is_sufficient=false にし、missing_information と follow_up_questions を具体的に返す。
-- 不明な情報を勝手に補わない。不確実な点は organized_markdown に「不明」と明記する。
-- organized_markdown は日本語の Markdown で、少なくとも以下の節を含める:
+
+class InstructionCompletion:
+    def __init__(self, OPENAI_API_KEY: str | None = None, model_name: str = "gpt-5"):
+        api_key = OPENAI_API_KEY or os.getenv("OPENAI_API_KEY", "")
+        self.model_name = model_name
+        self.temperature = float(os.getenv("INSTRUCTION_COMPLETION_TEMPERATURE", "0.2"))
+        self.client = OpenAI(api_key=api_key) if api_key and OpenAI is not None else None
+
+    def check_sufficiently_detailed(self, instruction: str) -> ReviewResult:
+        """
+        Check if the instruction is sufficiently detailed.
+        Returns a ReviewResult object containing the evaluation.
+        """
+        cleaned_instruction = instruction.strip()
+        if not cleaned_instruction:
+            return ReviewResult(
+                is_sufficiently_detailed=False,
+                additional_questions=self._build_missing_questions(
+                    has_input_output=False,
+                    has_flow=False,
+                    has_components=False,
+                    has_connections=False,
+                    is_empty=True,
+                ),
+            )
+
+        system_prompt = """
+You help turn paper method descriptions into figure-ready specifications.
+Judge whether the input contains enough information to draw a method diagram.
+
+Treat the description as sufficiently detailed only if it clearly includes most of:
+- the main input and output
+- the important modules or stages
+- the order of processing / data flow
+- key relationships such as branching, fusion, skip connections, iteration, or supervision
+
+If the description is not sufficient, ask only the minimum follow-up questions needed.
+Return JSON with exactly this schema:
+{
+  "is_sufficiently_detailed": true,
+  "additional_questions": null
+}
+
+Rules:
+- When information is sufficient, set additional_questions to null.
+- When information is insufficient, set additional_questions to a concise Japanese bullet list.
+- Do not include any text outside the JSON object.
+""".strip()
+
+        user_prompt = f"Method description:\n{cleaned_instruction}"
+
+        try:
+            payload = self._chat_json(system_prompt, user_prompt)
+            is_detailed = self._coerce_bool(payload["is_sufficiently_detailed"])
+            questions = payload.get("additional_questions")
+            if questions is not None:
+                questions = str(questions).strip() or None
+            return ReviewResult(
+                is_sufficiently_detailed=is_detailed,
+                additional_questions=None if is_detailed else questions,
+            )
+        except Exception:
+            return self._fallback_review(cleaned_instruction)
+
+    def convert_text_to_md(self, instruction: str) -> ConvertResult:
+        """
+        Convert the instruction text to markdown format.
+        Returns a ConvertResult object containing the converted text and figure caption.
+        """
+        cleaned_instruction = instruction.strip()
+        if not cleaned_instruction:
+            return ConvertResult(
+                markdown_text="# 手法概要\n\n入力がまだありません。",
+                figure_caption="手法概要図",
+            )
+
+        system_prompt = """
+You convert paper method descriptions into markdown that is ready for figure generation.
+Write in Japanese and organize the content so that a diagram generator or human designer can directly use it.
+
+Return JSON with exactly this schema:
+{
+  "markdown_text": "string",
+  "figure_caption": "string"
+}
+
+Requirements:
+- markdown_text must be valid markdown.
+- Prefer these sections when the information exists:
   1. 手法の目的
-  2. 主要モジュール
-  3. 入出力
+  2. 入力
+  3. 主要モジュール
   4. 処理フロー
-  5. 図示に必要な視覚要素
-  6. 不明点・要確認点
-- caption は is_sufficient=true のときだけ自然な図キャプションを返し、不十分な場合は空文字でよい。
-- follow_up_questions は、そのままユーザに見せられる日本語の質問文にする。
+  5. 図示のポイント
+- Preserve the meaning of the user's description and do not invent technical details.
+- If some detail is unclear, explicitly write "明示されていない".
+- figure_caption must be a short Japanese caption suitable for a paper figure.
+- Do not include any text outside the JSON object.
 """.strip()
 
+        user_prompt = f"Method description:\n{cleaned_instruction}"
 
-def initial_chat_history() -> list[dict[str, str]]:
-    return [
-        {
-            "role": "assistant",
-            "content": (
-                "論文の手法説明を入力してください。図示に必要な情報が足りなければ、"
-                "不足箇所だけ追加で質問します。"
+        try:
+            payload = self._chat_json(system_prompt, user_prompt)
+            markdown_text = str(payload["markdown_text"]).strip()
+            figure_caption = str(payload["figure_caption"]).strip()
+            return ConvertResult(
+                markdown_text=markdown_text,
+                figure_caption=figure_caption,
+            )
+        except Exception:
+            return self._fallback_convert(cleaned_instruction)
+
+    def _chat_json(self, system_prompt: str, user_prompt: str) -> dict[str, Any]:
+        if self.client is None:
+            raise RuntimeError("OpenAI client is not configured.")
+
+        response = self.client.chat.completions.create(
+            model=self.model_name,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=self.temperature,
+            response_format={"type": "json_object"},
+        )
+
+        content = response.choices[0].message.content or ""
+        return self._parse_json_object(content)
+
+    def _parse_json_object(self, text: str) -> dict[str, Any]:
+        raw_text = text.strip()
+        if not raw_text:
+            raise ValueError("OpenAI returned empty content.")
+
+        try:
+            parsed = json.loads(raw_text)
+        except json.JSONDecodeError:
+            match = re.search(r"\{.*\}", raw_text, re.DOTALL)
+            if match is None:
+                raise
+            parsed = json.loads(match.group(0))
+
+        if not isinstance(parsed, dict):
+            raise ValueError("OpenAI response is not a JSON object.")
+        return parsed
+
+    def _coerce_bool(self, value: Any) -> bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"true", "yes", "1"}:
+                return True
+            if normalized in {"false", "no", "0"}:
+                return False
+        return bool(value)
+
+    def _fallback_review(self, instruction: str) -> ReviewResult:
+        lowered = instruction.lower()
+        has_input_output = any(
+            token in lowered for token in ("input", "output", "入力", "出力")
+        )
+        has_flow = any(
+            token in instruction
+            for token in ("->", "→", "その後", "次に", "続いて", "最後に")
+        )
+        has_components = (
+            sum(
+                token in lowered
+                for token in (
+                    "module",
+                    "block",
+                    "encoder",
+                    "decoder",
+                    "attention",
+                    "fusion",
+                    "head",
+                    "backbone",
+                    "branch",
+                    "network",
+                    "layer",
+                    "モジュール",
+                    "層",
+                    "段階",
+                )
+            )
+            >= 2
+        )
+        has_connections = any(
+            token in lowered
+            for token in (
+                "concat",
+                "concatenate",
+                "skip",
+                "residual",
+                "fusion",
+                "merge",
+                "branch",
+                "接続",
+                "結合",
+                "分岐",
+                "融合",
+                "統合",
+                "反復",
+                "繰り返し",
+            )
+        )
+
+        is_detailed = (
+            len(instruction) >= 120
+            and sum((has_input_output, has_flow, has_components, has_connections)) >= 3
+        )
+        if is_detailed:
+            return ReviewResult(
+                is_sufficiently_detailed=True, additional_questions=None
+            )
+
+        return ReviewResult(
+            is_sufficiently_detailed=False,
+            additional_questions=self._build_missing_questions(
+                has_input_output=has_input_output,
+                has_flow=has_flow,
+                has_components=has_components,
+                has_connections=has_connections,
+                is_empty=False,
             ),
-        }
-    ]
-
-
-def new_session_state() -> dict[str, Any]:
-    return {
-        "phase": "awaiting_description",
-        "analysis_round": 0,
-        "is_sufficient": False,
-        "organized_markdown": "",
-        "caption": "",
-        "missing_information": [],
-        "follow_up_questions": [],
-        "paper_banana_status": "未生成",
-        "error_message": "",
-    }
-
-
-def render_status(state: dict[str, Any] | None) -> str:
-    session = _coerce_state(state)
-    phase_labels = {
-        "awaiting_description": "初回説明待ち",
-        "awaiting_details": "追加情報待ち",
-        "ready": "編集・生成可能",
-        "error": "エラー",
-    }
-    lines = [
-        "### Session Status",
-        f"- フェーズ: {phase_labels.get(str(session['phase']), '不明')}",
-        f"- 判定: {'図示可能' if session['is_sufficient'] else '追加情報が必要'}",
-        f"- 対話ラウンド: {int(session['analysis_round'])}",
-        f"- PaperBanana: {session['paper_banana_status']}",
-    ]
-    missing_information = _string_list(session.get("missing_information"))
-    if missing_information:
-        lines.append("")
-        lines.append("不足している情報:")
-        lines.extend(f"- {item}" for item in missing_information[:5])
-    return "\n".join(lines)
-
-
-def reset_session() -> tuple[
-    list[dict[str, str]],
-    str,
-    str,
-    dict[str, Any],
-    str,
-    str,
-]:
-    session = new_session_state()
-    return (
-        initial_chat_history(),
-        "",
-        "",
-        session,
-        render_status(session),
-        "",
-    )
-
-
-def submit_message(
-    user_message: str,
-    chat_history: list[dict[str, str]] | None,
-    state: dict[str, Any] | None,
-    current_markdown: str,
-    current_caption: str,
-) -> tuple[
-    list[dict[str, str]],
-    str,
-    str,
-    dict[str, Any],
-    str,
-    str,
-]:
-    session = _coerce_state(state)
-    history = _coerce_history(chat_history)
-    session["error_message"] = ""
-    session["organized_markdown"] = (current_markdown or "").strip()
-    session["caption"] = (current_caption or "").strip()
-
-    message = (user_message or "").strip()
-    if not message:
-        session["error_message"] = (
-            "メッセージが空です。手法の説明か追加情報を入力してください。"
-        )
-        return (
-            history,
-            session["organized_markdown"],
-            session["caption"],
-            session,
-            render_status(session),
-            "",
         )
 
-    history.append({"role": "user", "content": message})
+    def _build_missing_questions(
+        self,
+        *,
+        has_input_output: bool,
+        has_flow: bool,
+        has_components: bool,
+        has_connections: bool,
+        is_empty: bool,
+    ) -> str:
+        questions: list[str] = []
 
-    try:
-        assessment = _assess_instruction(
-            history=history,
-            current_markdown=session["organized_markdown"],
-            current_caption=session["caption"],
-        )
-    except Exception as exc:
-        session["phase"] = "error"
-        session["error_message"] = str(exc)
-        history.append(
-            {
-                "role": "assistant",
-                "content": (
-                    "OpenAI API の呼び出しに失敗しました。環境変数 `OPENAI_API_KEY` と"
-                    " モデル設定を確認してください。"
-                ),
-            }
-        )
-        return (
-            history,
-            session["organized_markdown"],
-            session["caption"],
-            session,
-            render_status(session),
-            "",
-        )
+        if is_empty:
+            questions.append(
+                "- まず、手法全体が何を入力として受け取り、何を出力するのかを教えてください。"
+            )
+            questions.append(
+                "- 主要なモジュールを順番に列挙し、それぞれの役割を簡潔に教えてください。"
+            )
+            questions.append("- モジュール同士がどう接続されるかを教えてください。")
+            return "\n".join(questions)
 
-    session["analysis_round"] = int(session["analysis_round"]) + 1
-    session["organized_markdown"] = assessment["organized_markdown"]
-    session["is_sufficient"] = assessment["is_sufficient"]
-    session["missing_information"] = assessment["missing_information"]
-    session["follow_up_questions"] = assessment["follow_up_questions"]
-    session["error_message"] = ""
+        if not has_input_output:
+            questions.append(
+                "- 入力と出力を明確にしてください。画像、テキスト、特徴量など何を受け取り何を返しますか。"
+            )
+        if not has_components:
+            questions.append("- 主要なモジュールや処理段階を順番に列挙してください。")
+        if not has_flow:
+            questions.append(
+                "- 各モジュールがどの順番で動くのか、処理フローを説明してください。"
+            )
+        if not has_connections:
+            questions.append(
+                "- 分岐、結合、残差接続、反復など、モジュール間の関係を教えてください。"
+            )
 
-    if session["is_sufficient"]:
-        session["phase"] = "ready"
-        session["caption"] = assessment["caption"] or session["caption"]
-        session["paper_banana_status"] = "未生成"
-        history.append(
-            {
-                "role": "assistant",
-                "content": (
-                    "図示に必要な情報が揃いました。右側の Markdown とキャプションを"
-                    "必要に応じて編集し、`Generate Figure` を押してください。"
-                ),
-            }
-        )
-    else:
-        session["phase"] = "awaiting_details"
-        history.append(
-            {
-                "role": "assistant",
-                "content": _format_follow_up_message(
-                    assessment["follow_up_questions"],
-                    assessment["missing_information"],
-                ),
-            }
-        )
+        if not questions:
+            questions.append("- 図に入れるべき重要要素をもう少し具体化してください。")
 
-    return (
-        history,
-        session["organized_markdown"],
-        session["caption"],
-        session,
-        render_status(session),
-        "",
-    )
+        return "\n".join(questions)
 
-
-def generate_figure(
-    current_markdown: str,
-    current_caption: str,
-    state: dict[str, Any] | None,
-) -> tuple[object | None, dict[str, Any], str]:
-    session = _coerce_state(state)
-    session["error_message"] = ""
-    session["organized_markdown"] = (current_markdown or "").strip()
-    session["caption"] = (current_caption or "").strip()
-
-    if not session["organized_markdown"]:
-        session["error_message"] = (
-            "整理済みの説明が空です。まずチャットで説明を整理してください。"
-        )
-        return None, session, render_status(session)
-
-    if not session["caption"]:
-        session["error_message"] = (
-            "キャプションが空です。キャプションを入力してください。"
-        )
-        return None, session, render_status(session)
-
-    paper_banana = PaperBanana()
-    image = paper_banana.generate(
-        description=session["organized_markdown"],
-        caption=session["caption"],
-    )
-    session["paper_banana_status"] = "生成済み"
-    return image, session, render_status(session)
-
-
-def _assess_instruction(
-    history: list[dict[str, str]],
-    current_markdown: str,
-    current_caption: str,
-) -> dict[str, Any]:
-    client = _get_openai_client()
-    response = client.chat.completions.create(
-        model=os.getenv("OPENAI_MODEL", DEFAULT_MODEL),
-        temperature=0.2,
-        response_format={"type": "json_object"},
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {
-                "role": "user",
-                "content": _build_assessment_prompt(
-                    history=history,
-                    current_markdown=current_markdown,
-                    current_caption=current_caption,
-                ),
-            },
-        ],
-    )
-    content = response.choices[0].message.content or ""
-    return _normalize_assessment(_extract_json(content))
-
-
-@lru_cache(maxsize=1)
-def _get_openai_client() -> OpenAI:
-    api_key = os.getenv("OPENAI_API_KEY", "").strip()
-    if not api_key:
-        raise RuntimeError(
-            "環境変数 `OPENAI_API_KEY` が設定されていません。"
-            " `export OPENAI_API_KEY=...` を実行してから起動してください。"
-        )
-
-    base_url = os.getenv("OPENAI_BASE_URL", "").strip() or None
-    return OpenAI(api_key=api_key, base_url=base_url)
-
-
-def _build_assessment_prompt(
-    history: list[dict[str, str]],
-    current_markdown: str,
-    current_caption: str,
-) -> str:
-    transcript = []
-    for message in history:
-        role = str(message.get("role", "user")).upper()
-        content = str(message.get("content", "")).strip()
-        if content:
-            transcript.append(f"{role}: {content}")
-
-    transcript_block = "\n\n".join(transcript)
-    markdown_block = current_markdown or "(未入力)"
-    caption_block = current_caption or "(未入力)"
-    return f"""
-以下はユーザとの対話履歴です。
-
-{transcript_block}
-
-現在ユーザが保持している整理済み Markdown:
-{markdown_block}
-
-現在ユーザが保持している図キャプション:
-{caption_block}
-
-この内容をもとに、図示可能なレベルまで説明が十分か判定してください。
-十分でない場合は、図に起こすために最低限必要な情報だけを質問してください。
-""".strip()
-
-
-def _normalize_assessment(payload: dict[str, Any]) -> dict[str, Any]:
-    organized_markdown = str(payload.get("organized_markdown", "")).strip()
-    is_sufficient = bool(payload.get("is_sufficient", False))
-    missing_information = _string_list(payload.get("missing_information"))
-    follow_up_questions = _string_list(payload.get("follow_up_questions"))
-    caption = str(payload.get("caption", "")).strip() if is_sufficient else ""
-
-    if not organized_markdown:
-        raise RuntimeError("OpenAI の応答に `organized_markdown` が含まれていません。")
-
-    if not is_sufficient and not follow_up_questions:
-        follow_up_questions = [
-            f"{index}. {item} を教えてください。"
-            for index, item in enumerate(missing_information, start=1)
+    def _fallback_convert(self, instruction: str) -> ConvertResult:
+        sentences = [
+            sentence.strip(" -\t")
+            for sentence in re.split(r"(?:\n+|(?<=[。．.!?])\s+)", instruction)
+            if sentence.strip()
         ]
+        overview = sentences[0] if sentences else instruction
+        flow_lines = (
+            "\n".join(f"- {sentence}" for sentence in sentences) or "- 明示されていない"
+        )
+        components = self._extract_component_lines(instruction)
 
-    return {
-        "organized_markdown": organized_markdown,
-        "is_sufficient": is_sufficient,
-        "missing_information": missing_information,
-        "follow_up_questions": follow_up_questions,
-        "caption": caption,
-    }
+        markdown_text = "\n".join(
+            [
+                "# 手法概要",
+                "",
+                "## 手法の目的",
+                overview,
+                "",
+                "## 入力",
+                (
+                    "- 明示されていない"
+                    if "入力" not in instruction and "input" not in instruction.lower()
+                    else f"- {instruction}"
+                ),
+                "",
+                "## 主要モジュール",
+                components,
+                "",
+                "## 処理フロー",
+                flow_lines,
+                "",
+                "## 図示のポイント",
+                "- 主要な処理ブロックを左から右、または上から下の順に配置する",
+                "- 分岐や結合がある場合は矢印で明示する",
+                "- 学習専用の要素がある場合は推論フローと区別して示す",
+            ]
+        )
 
+        caption_body = re.sub(r"\s+", " ", overview).strip("。． ")
+        if not caption_body:
+            caption_body = "手法概要"
+        figure_caption = f"{caption_body}を示す概略図。"
 
-def _extract_json(content: str) -> dict[str, Any]:
-    cleaned = (content or "").strip()
-    if cleaned.startswith("```"):
-        cleaned = cleaned.split("\n", 1)[-1]
-        if cleaned.endswith("```"):
-            cleaned = cleaned.rsplit("```", 1)[0]
-        cleaned = cleaned.strip()
+        return ConvertResult(
+            markdown_text=markdown_text,
+            figure_caption=figure_caption,
+        )
 
-    try:
-        payload = json.loads(cleaned)
-    except json.JSONDecodeError as exc:
-        raise RuntimeError("OpenAI の JSON 応答を解釈できませんでした。") from exc
+    def _extract_component_lines(self, instruction: str) -> str:
+        component_patterns = (
+            r"[A-Z][A-Za-z0-9_-]*(?:\s+[A-Z][A-Za-z0-9_-]*)*",
+            r"[ぁ-んァ-ン一-龥A-Za-z0-9_-]*モジュール",
+            r"[ぁ-んァ-ン一-龥A-Za-z0-9_-]*ブロック",
+            r"[ぁ-んァ-ン一-龥A-Za-z0-9_-]*層",
+        )
+        found: list[str] = []
 
-    if not isinstance(payload, dict):
-        raise RuntimeError("OpenAI の応答が JSON オブジェクトではありませんでした。")
-    return payload
+        for pattern in component_patterns:
+            for match in re.findall(pattern, instruction):
+                value = match.strip()
+                if len(value) < 2:
+                    continue
+                if value not in found:
+                    found.append(value)
 
-
-def _coerce_state(state: dict[str, Any] | None) -> dict[str, Any]:
-    session = new_session_state()
-    if isinstance(state, dict):
-        session.update(state)
-    session["missing_information"] = _string_list(session.get("missing_information"))
-    session["follow_up_questions"] = _string_list(session.get("follow_up_questions"))
-    session["organized_markdown"] = str(session.get("organized_markdown", "")).strip()
-    session["caption"] = str(session.get("caption", "")).strip()
-    session["paper_banana_status"] = (
-        str(session.get("paper_banana_status", "未生成")).strip() or "未生成"
-    )
-    session["error_message"] = str(session.get("error_message", "")).strip()
-    return session
-
-
-def _coerce_history(
-    chat_history: list[dict[str, str]] | None,
-) -> list[dict[str, str]]:
-    if not chat_history:
-        return initial_chat_history()
-
-    normalized_history: list[dict[str, str]] = []
-    for message in chat_history:
-        if not isinstance(message, dict):
-            continue
-        role = str(message.get("role", "")).strip() or "assistant"
-        content = str(message.get("content", "")).strip()
-        if content:
-            normalized_history.append({"role": role, "content": content})
-    return normalized_history or initial_chat_history()
-
-
-def _string_list(value: Any) -> list[str]:
-    if isinstance(value, list):
-        return [str(item).strip() for item in value if str(item).strip()]
-    if value is None:
-        return []
-    text = str(value).strip()
-    return [text] if text else []
-
-
-def _format_follow_up_message(
-    questions: list[str],
-    missing_information: list[str],
-) -> str:
-    lines = [
-        "図示にはもう少し情報が必要です。以下を教えてください。",
-    ]
-    if missing_information:
-        lines.append("")
-        lines.append("不足情報:")
-        lines.extend(f"- {item}" for item in missing_information)
-    if questions:
-        lines.append("")
-        lines.append("質問:")
-        lines.extend(f"- {question}" for question in questions)
-    return "\n".join(lines)
+        if not found:
+            return "- 明示されていない"
+        return "\n".join(f"- {name}" for name in found[:8])
