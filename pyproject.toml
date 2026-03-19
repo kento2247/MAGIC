@@ -15,6 +15,7 @@ dependencies = [
     "json-repair>=0.58.6",
     "matplotlib>=3.10.8",
     "openai>=2.29.0",
+    "opencv-python>=4.13.0.92",
     "pillow>=12.1.1",
     "python-pptx>=1.0.2",
     "torch>=2.10.0",

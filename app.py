@@ -2,6 +2,7 @@ import base64
 import os
 from io import BytesIO
 from pathlib import Path
+from uuid import uuid4
 
 from flask import (
     Flask,
@@ -14,12 +15,16 @@ from flask import (
 )
 
 from utils.InstructionCompletion import InstructionCompletion
+from utils.PingToSVG import PingToSVG
 
 BASE_DIR = Path(__file__).resolve().parent
 DEMO_SAMPLE_DIR = BASE_DIR / "demo_sample"
+GENERATED_IMAGE_DIR = BASE_DIR / "generated_images"
+GENERATED_IMAGE_DIR.mkdir(exist_ok=True)
 
 app = Flask(__name__)
 instruction_completion = InstructionCompletion(os.getenv("OPENAI_API_KEY", ""))
+ping_to_svg = PingToSVG()
 paper_banana = None
 
 
@@ -80,6 +85,13 @@ def image_to_data_url(image) -> str:
     image.save(buffer, format="PNG")
     encoded = base64.b64encode(buffer.getvalue()).decode("utf-8")
     return f"data:image/png;base64,{encoded}"
+
+
+def save_generated_image(image) -> str:
+    filename = f"{uuid4().hex}.png"
+    image_path = GENERATED_IMAGE_DIR / filename
+    image.save(image_path, format="PNG")
+    return url_for("generated_image", filename=filename)
 
 
 @app.get("/")
@@ -157,9 +169,18 @@ def generate_figure():
     return jsonify(
         {
             "image_data_url": image_to_data_url(image),
+            "image_url": save_generated_image(image),
             "is_demo": is_demo,
         }
     )
+
+
+@app.get("/generated-image/<path:filename>")
+def generated_image(filename: str):
+    image_path = GENERATED_IMAGE_DIR / filename
+    if not image_path.exists():
+        abort(404, description="Generated image not found.")
+    return send_from_directory(GENERATED_IMAGE_DIR, image_path.name)
 
 
 @app.get("/demo-sample-image/<path:sample_name>")

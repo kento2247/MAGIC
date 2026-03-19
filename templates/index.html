@@ -623,6 +623,20 @@
             color: var(--ink-soft);
         }
 
+        .modal-loading,
+        .modal-image-wrap {
+            border-radius: 24px;
+            border: 1px solid rgba(24, 49, 79, 0.1);
+            background:
+                linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(246, 240, 230, 0.92));
+        }
+
+        .modal-loading[hidden],
+        .modal-feedback[hidden],
+        .modal-result[hidden] {
+            display: none !important;
+        }
+
         .modal-feedback {
             border: 1px dashed rgba(154, 79, 69, 0.22);
             border-radius: 22px;
@@ -659,10 +673,6 @@
             place-items: center;
             min-height: 360px;
             padding: 1rem;
-            border-radius: 24px;
-            border: 1px solid rgba(24, 49, 79, 0.1);
-            background:
-                linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(246, 240, 230, 0.92));
         }
 
         .modal-image-wrap img {
@@ -871,6 +881,7 @@
             compiledInstruction: "",
             messages: [],
             busy: false,
+            generatedImageSrc: "",
             generatedImageDataUrl: "",
             generatedImageWidth: 0,
             generatedImageHeight: 0,
@@ -972,17 +983,16 @@
             if (!elements.generateHint) {
                 return;
             }
-            if (state.mode === "existing") {
-                elements.generateHint.textContent = "既存チャットでは generate 時に `is_demo=True` を渡します。";
-                return;
-            }
-            elements.generateHint.textContent = "新規チャットでは generate 時に `is_demo=False` を渡します。";
+            elements.generateHint.textContent = "Generate Figure で図を生成します。";
         }
 
         function clearGeneratedImage() {
+            state.generatedImageSrc = "";
             state.generatedImageDataUrl = "";
             state.generatedImageWidth = 0;
             state.generatedImageHeight = 0;
+            elements.modalImage.onload = null;
+            elements.modalImage.onerror = null;
             elements.modalImage.removeAttribute("src");
             elements.modalLoading.hidden = false;
             elements.modalFeedback.hidden = true;
@@ -1023,31 +1033,49 @@
             elements.saveSvgButton.disabled = true;
         }
 
-        function loadModalImage(dataUrl) {
-            return new Promise((resolve, reject) => {
-                const image = elements.modalImage;
-                image.onload = () => {
-                    resolve({
-                        width: image.naturalWidth || 0,
-                        height: image.naturalHeight || 0,
-                    });
-                };
-                image.onerror = () => reject(new Error("生成画像を表示できませんでした。"));
-                image.src = dataUrl;
-            });
+        function updateGeneratedImageSize() {
+            state.generatedImageWidth = elements.modalImage.naturalWidth || 0;
+            state.generatedImageHeight = elements.modalImage.naturalHeight || 0;
         }
 
-        async function showModalResult(dataUrl) {
+        function showModalResult(imageSrc, imageDataUrl) {
+            if (!imageSrc) {
+                showModalError("生成画像を表示できませんでした。");
+                return;
+            }
+
             openGenerationModal();
-            const dimensions = await loadModalImage(dataUrl);
-            state.generatedImageDataUrl = dataUrl;
-            state.generatedImageWidth = dimensions.width;
-            state.generatedImageHeight = dimensions.height;
+            state.generatedImageSrc = imageSrc;
+            state.generatedImageDataUrl = imageDataUrl || (imageSrc.startsWith("data:") ? imageSrc : "");
+            state.generatedImageWidth = 0;
+            state.generatedImageHeight = 0;
             elements.modalLoading.hidden = true;
             elements.modalFeedback.hidden = true;
             elements.modalFeedback.textContent = "";
             elements.modalResult.hidden = false;
             elements.saveSvgButton.disabled = false;
+
+            const image = elements.modalImage;
+            image.onload = () => {
+                updateGeneratedImageSize();
+                image.onload = null;
+                image.onerror = null;
+            };
+            image.onerror = () => {
+                image.onload = null;
+                image.onerror = null;
+                state.generatedImageDataUrl = "";
+                state.generatedImageWidth = 0;
+                state.generatedImageHeight = 0;
+                showModalError("生成画像を表示できませんでした。");
+            };
+            image.src = imageSrc;
+
+            if (image.complete && image.naturalWidth > 0) {
+                updateGeneratedImageSize();
+                image.onload = null;
+                image.onerror = null;
+            }
         }
 
         function escapeSvgAttribute(text) {
@@ -1135,14 +1163,14 @@
             }
 
             setBusy(true);
-            setStatus("読込中", "working", "既存チャットの内容を取得しています。");
+            setStatus("読込中", "working", "内容を取得しています。");
 
             try {
                 const response = await fetch(`/api/demo-sample?name=${encodeURIComponent(sampleName)}`);
                 const data = await response.json();
 
                 if (!response.ok) {
-                    throw new Error(data.error || "既存チャットを読み込めませんでした。");
+                    throw new Error(data.error || "内容を読み込めませんでした。");
                 }
 
                 state.mode = "existing";
@@ -1164,7 +1192,7 @@
                 clearGeneratedImage();
                 closeGenerationModal();
                 elements.sampleSelect.value = data.name;
-                elements.chatMeta.textContent = `読み込み済み: ${data.name}`;
+                elements.chatMeta.textContent = "手法説明の入力と追加回答";
                 if (elements.samplePreview) {
                     elements.samplePreview.hidden = false;
                 }
@@ -1198,10 +1226,10 @@
                 renderMessages();
                 syncDraftMeta();
                 syncGenerateHint();
-                setStatus("既存チャット", "ready", `${data.name} を編集可能な状態で読み込みました。`);
+                setStatus("準備完了", "ready", "編集可能な状態で読み込みました。");
             } catch (error) {
                 setStatus("読込失敗", "needs-info", error.message);
-                pushMessage("assistant", `既存チャットの読込に失敗しました: ${error.message}`);
+                pushMessage("assistant", `チャットの読込に失敗しました: ${error.message}`);
             } finally {
                 setBusy(false);
             }
@@ -1248,25 +1276,19 @@
                     throw new Error(data.error || "図生成に失敗しました。");
                 }
 
-                await showModalResult(data.image_data_url);
+                showModalResult(data.image_url || data.image_data_url, data.image_data_url);
                 if (elements.generationMeta) {
-                    elements.generationMeta.textContent = data.is_demo
-                        ? "ポップアップに PaperBanana.generate(..., is_demo=True) の結果を表示しています。"
-                        : "ポップアップに PaperBanana.generate(..., is_demo=False) の結果を表示しています。";
+                    elements.generationMeta.textContent = "ポップアップに生成結果を表示しています。";
                 }
 
                 pushMessage(
                     "assistant",
-                    data.is_demo
-                        ? "既存チャットのため、PaperBanana を demo モードで実行しました。"
-                        : "PaperBanana による図生成を実行しました。"
+                    "PaperBanana による図生成を実行しました。"
                 );
                 setStatus(
                     "生成完了",
                     "ready",
-                    data.is_demo
-                        ? "既存チャットなので demo 画像を返しました。"
-                        : "PaperBanana の生成結果をポップアップに表示しました。"
+                    "PaperBanana の生成結果をポップアップに表示しました。"
                 );
             } catch (error) {
                 pushMessage("assistant", `図生成でエラーが発生しました: ${error.message}`);
