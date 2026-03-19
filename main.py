@@ -68,7 +68,7 @@ def main() -> None:
 
     print(f"Saving {len(output_image)} images...", flush=True)
     for i, output_layer in enumerate(output_image):
-        output_layer.save(f"outputs/test_{i}.png")
+        output_layer.save(f"output/test_{i}.png")
 
     print("Done.", flush=True)
 
