@@ -1,152 +1,167 @@
-from pathlib import Path
+import gradio as gr
 
-from flask import Flask, jsonify
-from openai import OpenAI
-import base64
-from PIL import Image
-import re
-import os
-import json
+from utils.InstructionCompletion import (
+    initial_chat_history,
+    new_session_state,
+    render_status,
+    reset_session,
+    submit_message,
+)
 
-app = Flask(__name__)
+APP_THEME = gr.themes.Soft(
+    primary_hue="amber", secondary_hue="slate", neutral_hue="stone"
+)
+APP_CSS = """
+        .hero {padding: 22px 24px; border: 1px solid #d8c7a6; border-radius: 18px;
+               background: linear-gradient(135deg, #203746 0%, #36596d 100%);}
+        .hero h1, .hero p {color: #f7f2e8 !important; margin: 0;}
+        .hero h1 {margin-bottom: 10px;}
+        .hero p + p {margin-top: 10px;}
+        .panel {border-radius: 16px;}
+        .status-panel {padding: 14px 16px; border: 1px solid #d8c7a6; border-radius: 16px; background: #fffaf1;}
+        .error-panel {padding: 14px 16px; border: 1px solid #d67a58; border-radius: 16px; background: #fff0ea;}
+        textarea, input {font-size: 15px !important;}
+        """
 
-logger = app.logger
+
+def error_update(state: dict[str, object] | None):
+    message = str((state or {}).get("error_message", "")).strip()
+    if not message:
+        return gr.update(value="", visible=False)
+    return gr.update(value=f"**Gemini Error**\n\n{message}", visible=True)
 
 
-class ImageCropper:
-    def __init__(
-        self,
-        api_key: str,
-        output_dir: Path = Path("output"),
-        model_name: str = "Qwen/Qwen3-VL-4B-Instruct",
-    ):
-        self.output_dir = output_dir
-        self.client = OpenAI(
-            base_url="http://http://127.0.0.1:22002/v1", api_key=api_key
-        )
-        self.output_dir.mkdir(exist_ok=True)
-        self.model_name = model_name
-        self.prompt_text = (
-            "You are a helpful assistant. Find and output the bounding boxes for the following modules in this model diagram:\n"
-            "1. Landmark Distribution Parchfication Module\n"
-            "2. Visual-Linguistic Spatial Integration Module\n"
-            "3. Existence Aware Polygon Segmentation Module\n\n"
-            "4. Input\n"
-            "Please output in the format: Module Name: (xmin, ymin),(xmax, ymax)"
-        )
+def handle_submit(
+    user_message: str,
+    chat_history: list[dict[str, str]] | None,
+    state: dict[str, object] | None,
+    current_markdown: str,
+    current_caption: str,
+):
+    result = submit_message(
+        user_message, chat_history, state, current_markdown, current_caption
+    )
+    return (
+        result[0],
+        result[1],
+        result[2],
+        result[5],
+        result[6],
+        error_update(result[5]),
+        result[7],
+    )
 
-    def crop(self, image_path: Path):
-        with open(image_path, "rb") as image_file:
-            base64_image = base64.b64encode(image_file.read()).decode("utf-8")
 
-        self.logger.info("vLLMサーバーにリクエストを送信中...")
-        response = self.client.chat.completions.create(
-            model=self.model_name,
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": self.prompt_text},
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:image/jpeg;base64,{base64_image}"
-                            },
-                        },
-                    ],
-                }
-            ],
-            max_tokens=512,
-            temperature=0.1,
-        )
+def handle_reset():
+    result = reset_session()
+    return (
+        result[0],
+        result[1],
+        result[2],
+        result[5],
+        result[6],
+        error_update(result[5]),
+        result[7],
+    )
 
-        output_text = response.choices[0].message.content
-        self.logger.info("--- Model Output ---")
-        self.logger.info(output_text)
-        self.logger.info("--------------------")
 
-        # 3. 座標の抽出とクロップ（実際の出力形式に合わせた正規表現）
-        img = Image.open(image_path)
-        width, height = img.size
-        boxes_found = False
-        manifest = {
-            "source_image": image_path,
-            "image_width": width,
-            "image_height": height,
-            "modules": [],
-        }
+def build_app() -> gr.Blocks:
+    initial_state = new_session_state()
+    with gr.Blocks(title="Instruction Completion") as demo:
+        error_box = gr.Markdown("", visible=False, elem_classes=["error-panel"])
 
-        # 行ごとに処理して、モジュール名と座標を取り出す
-        for i, line in enumerate(output_text.strip().split("\n")):
-            # (数字, 数字),(数字, 数字) のパターンを探す
-            coord_match = re.search(r"\((\d+),\s*(\d+)\),\s*\((\d+),\s*(\d+)\)", line)
+        with gr.Row():
+            with gr.Column(scale=7):
+                chatbot = gr.Chatbot(
+                    value=initial_chat_history(),
+                    label="Chat",
+                    height=520,
+                    elem_classes=["panel"],
+                )
+                chat_input = gr.Textbox(
+                    label="Message",
+                    lines=6,
+                    placeholder="論文の手法説明や追加情報を入力してください",
+                    elem_classes=["panel"],
+                )
+                with gr.Row():
+                    send = gr.Button("Send", variant="primary")
+                    reset = gr.Button("Reset")
 
-            if coord_match:
-                boxes_found = True
-                # Qwen3の出力に合わせて x, y の順で取得
-                xmin, ymin, xmax, ymax = map(int, coord_match.groups())
-
-                # モジュール名の抽出（行頭の「1. 」などを無視して「:」の前までを取得）
-                name_match = re.search(r"^[0-9\.\s]*([^:]+):", line)
-                if name_match:
-                    # ファイル名に使えるように空白をアンダースコアに変換
-                    module_name = name_match.group(1).strip().replace(" ", "_")
-                else:
-                    module_name = f"module_{i+1}"
-
-                # 1000スケールから実際のピクセル座標へ変換
-                left = int((xmin / 1000.0) * width)
-                top = int((ymin / 1000.0) * height)
-                right = int((xmax / 1000.0) * width)
-                bottom = int((ymax / 1000.0) * height)
-
-                # クリップ処理（画像サイズをはみ出ないように）
-                left, top = max(0, left), max(0, top)
-                right, bottom = min(width, right), min(height, bottom)
-
-                cropped_img = img.crop((left, top, right, bottom))
-
-                save_path = self.output_dir / f"{module_name}.png"
-                cropped_img.save(save_path)
-                self.logger.info(f"Saved: {save_path} (Coords: {left}, {top}, {right}, {bottom})")
-                manifest["modules"].append(
-                    {
-                        "module_name": module_name,
-                        "crop_path": save_path,
-                        "bbox": {
-                            "left": left,
-                            "top": top,
-                            "right": right,
-                            "bottom": bottom,
-                        },
-                        "normalized_bbox_1000": {
-                            "xmin": xmin,
-                            "ymin": ymin,
-                            "xmax": xmax,
-                            "ymax": ymax,
-                        },
-                        "crop_size": {
-                            "width": right - left,
-                            "height": bottom - top,
-                        },
-                    }
+            with gr.Column(scale=5):
+                caption = gr.Textbox(
+                    label="図キャプション",
+                    lines=14,
+                    placeholder="ここにキャプション案が表示されます",
+                    elem_classes=["panel"],
+                )
+                status = gr.Markdown(
+                    render_status(initial_state), elem_classes=["status-panel"]
                 )
 
-        if not boxes_found:
-            self.logger.error("エラー: 出力から座標が抽出できませんでした。")
-            return
+        session_state = gr.State(initial_state)
+        organized_markdown_state = gr.State("")
 
-        manifest_path = self.output_dir / "crop_manifest.json"
-        with open(manifest_path, "w", encoding="utf-8") as f:
-            json.dump(manifest, f, ensure_ascii=False, indent=2)
-        self.logger.info(f"Saved manifest: {manifest_path}")
+        send.click(
+            fn=handle_submit,
+            inputs=[
+                chat_input,
+                chatbot,
+                session_state,
+                organized_markdown_state,
+                caption,
+            ],
+            outputs=[
+                chatbot,
+                organized_markdown_state,
+                caption,
+                session_state,
+                status,
+                error_box,
+                chat_input,
+            ],
+        )
+        chat_input.submit(
+            fn=handle_submit,
+            inputs=[
+                chat_input,
+                chatbot,
+                session_state,
+                organized_markdown_state,
+                caption,
+            ],
+            outputs=[
+                chatbot,
+                organized_markdown_state,
+                caption,
+                session_state,
+                status,
+                error_box,
+                chat_input,
+            ],
+        )
+        reset.click(
+            fn=handle_reset,
+            outputs=[
+                chatbot,
+                organized_markdown_state,
+                caption,
+                session_state,
+                status,
+                error_box,
+                chat_input,
+            ],
+        )
 
-@app.get("/")
-@app.post("/crop_image")
-def crop_image():
-    pass
+    return demo
 
+
+app = build_app()
+
+
+def main() -> None:
+    app.launch(theme=APP_THEME, css=APP_CSS)
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    main()
