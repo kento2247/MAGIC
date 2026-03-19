@@ -5,3 +5,4 @@ phase2_layers_*/
 __pycache__/
 output
 .env
+generated_images

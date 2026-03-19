@@ -403,6 +403,54 @@
             background: linear-gradient(180deg, rgba(255, 252, 247, 0.98), rgba(249, 243, 233, 0.9));
         }
 
+        .message[data-state="pending"] .bubble {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.8rem;
+        }
+
+        .assistant-pending-text {
+            color: var(--ink);
+        }
+
+        .assistant-pending-dots {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.32rem;
+            flex: 0 0 auto;
+        }
+
+        .assistant-pending-dots span {
+            width: 0.44rem;
+            height: 0.44rem;
+            border-radius: 50%;
+            background: rgba(215, 129, 42, 0.82);
+            animation: assistantPulse 1s ease-in-out infinite;
+        }
+
+        .assistant-pending-dots span:nth-child(2) {
+            animation-delay: 120ms;
+        }
+
+        .assistant-pending-dots span:nth-child(3) {
+            animation-delay: 240ms;
+        }
+
+        @keyframes assistantPulse {
+
+            0%,
+            80%,
+            100% {
+                transform: translateY(0);
+                opacity: 0.35;
+            }
+
+            40% {
+                transform: translateY(-2px);
+                opacity: 1;
+            }
+        }
+
         .chat-empty {
             padding: 1rem;
             border: 1px dashed rgba(24, 49, 79, 0.15);
@@ -673,9 +721,19 @@
             place-items: center;
             min-height: 360px;
             padding: 1rem;
+            overflow: hidden;
+        }
+
+        .modal-image-stage {
+            position: relative;
+            display: inline-grid;
+            place-items: center;
+            max-width: 100%;
+            isolation: isolate;
         }
 
         .modal-image-wrap img {
+            display: block;
             max-width: 100%;
             max-height: min(62vh, 720px);
             object-fit: contain;
@@ -683,8 +741,9 @@
         }
 
         .modal-actions {
-            display: flex;
-            justify-content: center;
+            display: grid;
+            justify-items: center;
+            gap: 0.9rem;
         }
 
         .icon-button {
@@ -697,6 +756,128 @@
             width: 18px;
             height: 18px;
             flex: 0 0 18px;
+        }
+
+        .export-overlay {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            border-radius: 18px;
+            overflow: hidden;
+        }
+
+        .export-overlay[hidden] {
+            display: none !important;
+        }
+
+        .export-overlay-canvas {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            display: block;
+            border-radius: 18px;
+        }
+
+        .export-overlay-hud {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 1rem;
+            padding: 1rem;
+        }
+
+        .export-overlay-copy {
+            display: grid;
+            gap: 0.45rem;
+            max-width: min(74%, 420px);
+        }
+
+        .export-overlay-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.45rem;
+            width: fit-content;
+            padding: 0.38rem 0.7rem;
+            border-radius: 999px;
+            background: rgba(18, 25, 35, 0.74);
+            color: #fffdf9;
+            font-size: 0.72rem;
+            font-weight: 700;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            backdrop-filter: blur(10px);
+        }
+
+        .export-overlay-label {
+            padding: 0.62rem 0.8rem;
+            border-radius: 14px;
+            background: rgba(255, 253, 249, 0.82);
+            color: var(--ink);
+            font-size: 0.92rem;
+            font-weight: 600;
+            line-height: 1.35;
+            box-shadow: 0 18px 36px rgba(24, 49, 79, 0.12);
+            backdrop-filter: blur(10px);
+        }
+
+        .export-overlay-metric {
+            padding: 0.46rem 0.7rem;
+            border-radius: 999px;
+            background: rgba(255, 253, 249, 0.82);
+            color: var(--ink-soft);
+            font-size: 0.74rem;
+            font-weight: 600;
+            letter-spacing: 0.06em;
+            box-shadow: 0 18px 36px rgba(24, 49, 79, 0.12);
+            backdrop-filter: blur(10px);
+        }
+
+        .export-overlay-progress {
+            position: absolute;
+            left: 50%;
+            bottom: 1rem;
+            transform: translateX(-50%);
+            display: inline-flex;
+            gap: 0.45rem;
+            padding: 0.46rem 0.52rem;
+            border-radius: 999px;
+            background: rgba(18, 25, 35, 0.66);
+            backdrop-filter: blur(10px);
+        }
+
+        .export-progress-step {
+            width: 1.9rem;
+            height: 0.38rem;
+            border-radius: 999px;
+            background: rgba(255, 253, 249, 0.2);
+            transition: background 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+        }
+
+        .export-progress-step[data-state="active"] {
+            background: var(--amber);
+            box-shadow: 0 0 0 6px rgba(215, 129, 42, 0.14);
+            transform: scaleX(1.04);
+        }
+
+        .export-progress-step[data-state="done"] {
+            background: #4a7a5d;
+            box-shadow: none;
+        }
+
+        @media (max-width: 720px) {
+            .export-overlay-hud {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 0.75rem;
+                padding: 0.8rem;
+            }
+
+            .export-overlay-copy {
+                max-width: none;
+            }
         }
 
         @keyframes rise {
@@ -851,7 +1032,29 @@
                     <div class="modal-feedback" id="modalFeedback" hidden></div>
                     <div class="modal-result" id="modalResult" hidden>
                         <div class="modal-image-wrap">
-                            <img id="modalImage" alt="generated figure">
+                            <div class="modal-image-stage">
+                                <img id="modalImage" alt="generated figure">
+                                <div class="export-overlay" id="exportOverlay" hidden>
+                                    <canvas class="export-overlay-canvas" id="exportOverlayCanvas"></canvas>
+                                    <div class="export-overlay-hud">
+                                        <div class="export-overlay-copy">
+                                            <div class="export-overlay-chip">Exporting SVG</div>
+                                            <div class="export-overlay-label" id="exportOverlayLabel">
+                                                OCR: 文字候補を走査しています。
+                                            </div>
+                                        </div>
+                                        <div class="export-overlay-metric" id="exportOverlayMetric">OCR</div>
+                                    </div>
+                                    <div class="export-overlay-progress">
+                                        <span class="export-progress-step" data-state="idle"></span>
+                                        <span class="export-progress-step" data-state="idle"></span>
+                                        <span class="export-progress-step" data-state="idle"></span>
+                                        <span class="export-progress-step" data-state="idle"></span>
+                                        <span class="export-progress-step" data-state="idle"></span>
+                                        <span class="export-progress-step" data-state="idle"></span>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                         <div class="modal-actions">
                             <button class="secondary icon-button" id="saveSvgButton" type="button" disabled>
@@ -863,7 +1066,7 @@
                                     <path d="M5 20H19" stroke="currentColor" stroke-width="1.8"
                                         stroke-linecap="round" />
                                 </svg>
-                                <span>Save SVG</span>
+                                <span>Export SVG</span>
                             </button>
                         </div>
                     </div>
@@ -874,6 +1077,14 @@
 
     <script>
         const demoSamples = {{ demo_samples | tojson }};
+        const EXPORT_STAGE_LABELS = [
+            "OCR: 文字候補を走査しています。",
+            "Erase text: 検出した文字領域を消去しています。",
+            "Detect arrows: 矢印の候補を検出しています。",
+            "Erase arrows before SAM: SAM 前処理として矢印を消去しています。",
+            "SAM: 領域マスクを推定しています。",
+            "Merge: 各結果を統合して SVG export を組み立てています。",
+        ];
 
         const state = {
             mode: "new",
@@ -881,10 +1092,12 @@
             compiledInstruction: "",
             messages: [],
             busy: false,
+            assistantActivity: "",
             generatedImageSrc: "",
             generatedImageDataUrl: "",
             generatedImageWidth: 0,
             generatedImageHeight: 0,
+            exportInProgress: false,
         };
 
         const elements = {
@@ -914,6 +1127,11 @@
             modalResult: document.getElementById("modalResult"),
             modalImage: document.getElementById("modalImage"),
             saveSvgButton: document.getElementById("saveSvgButton"),
+            exportOverlay: document.getElementById("exportOverlay"),
+            exportOverlayCanvas: document.getElementById("exportOverlayCanvas"),
+            exportOverlayLabel: document.getElementById("exportOverlayLabel"),
+            exportOverlayMetric: document.getElementById("exportOverlayMetric"),
+            exportProgressSteps: Array.from(document.querySelectorAll("#exportOverlay .export-progress-step")),
         };
 
         function setBusy(isBusy) {
@@ -934,12 +1152,7 @@
         }
 
         function renderMessages() {
-            if (state.messages.length === 0) {
-                elements.chatLog.innerHTML = '<div class="chat-empty">ここに対話履歴が表示されます。</div>';
-                return;
-            }
-
-            elements.chatLog.innerHTML = state.messages.map((message) => {
+            const messageMarkup = state.messages.map((message) => {
                 const roleLabel = message.role === "user" ? "User" : "Assistant";
                 return `
                     <article class="message" data-role="${message.role}">
@@ -949,6 +1162,28 @@
                 `;
             }).join("");
 
+            const activityMarkup = state.assistantActivity ? `
+                <article class="message" data-role="assistant" data-state="pending">
+                    <div class="message-tag">Assistant</div>
+                    <div class="bubble">
+                        <span class="assistant-pending-text">${escapeHtml(state.assistantActivity)}</span>
+                        <span class="assistant-pending-dots" aria-hidden="true">
+                            <span></span>
+                            <span></span>
+                            <span></span>
+                        </span>
+                    </div>
+                </article>
+            ` : "";
+
+            const markup = `${messageMarkup}${activityMarkup}`;
+
+            if (!markup) {
+                elements.chatLog.innerHTML = '<div class="chat-empty">ここに対話履歴が表示されます。</div>';
+                return;
+            }
+
+            elements.chatLog.innerHTML = markup;
             elements.chatLog.scrollTop = elements.chatLog.scrollHeight;
         }
 
@@ -967,6 +1202,19 @@
                 return;
             }
             state.messages.push({ role, text });
+            renderMessages();
+        }
+
+        function setAssistantActivity(text) {
+            state.assistantActivity = text || "";
+            renderMessages();
+        }
+
+        function clearAssistantActivity() {
+            if (!state.assistantActivity) {
+                return;
+            }
+            state.assistantActivity = "";
             renderMessages();
         }
 
@@ -991,6 +1239,7 @@
             state.generatedImageDataUrl = "";
             state.generatedImageWidth = 0;
             state.generatedImageHeight = 0;
+            state.exportInProgress = false;
             elements.modalImage.onload = null;
             elements.modalImage.onerror = null;
             elements.modalImage.removeAttribute("src");
@@ -999,6 +1248,7 @@
             elements.modalFeedback.textContent = "";
             elements.modalResult.hidden = true;
             elements.saveSvgButton.disabled = true;
+            resetExportVisualization();
             if (elements.generationMeta) {
                 elements.generationMeta.textContent = "生成結果はポップアップに表示されます。";
             }
@@ -1038,6 +1288,782 @@
             state.generatedImageHeight = elements.modalImage.naturalHeight || 0;
         }
 
+        function resetExportVisualization() {
+            elements.exportOverlay.hidden = true;
+            elements.exportOverlayLabel.textContent = EXPORT_STAGE_LABELS[0];
+            elements.exportOverlayMetric.textContent = "OCR";
+            elements.exportProgressSteps.forEach((step) => {
+                step.dataset.state = "idle";
+            });
+            const context = elements.exportOverlayCanvas.getContext("2d");
+            context.clearRect(0, 0, elements.exportOverlayCanvas.width, elements.exportOverlayCanvas.height);
+        }
+
+        function sleep(ms) {
+            return new Promise((resolve) => window.setTimeout(resolve, ms));
+        }
+
+        function createCanvasSurface(width, height) {
+            const canvas = document.createElement("canvas");
+            canvas.width = Math.max(1, width);
+            canvas.height = Math.max(1, height);
+            const context = canvas.getContext("2d", { willReadFrequently: true });
+            return { canvas, context };
+        }
+
+        function syncExportOverlayCanvasSize() {
+            const canvas = elements.exportOverlayCanvas;
+            const imageRect = elements.modalImage.getBoundingClientRect();
+            const cssWidth = Math.max(1, Math.round(imageRect.width || elements.modalImage.clientWidth || 1));
+            const cssHeight = Math.max(1, Math.round(imageRect.height || elements.modalImage.clientHeight || 1));
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = Math.max(1, Math.round(cssWidth * dpr));
+            canvas.height = Math.max(1, Math.round(cssHeight * dpr));
+            return {
+                width: canvas.width,
+                height: canvas.height,
+            };
+        }
+
+        function createRasterSurface(image, width, height) {
+            const { canvas, context } = createCanvasSurface(width, height);
+            context.drawImage(image, 0, 0, width, height);
+            return canvas;
+        }
+
+        function extractGrayMap(imageData) {
+            const gray = new Float32Array(imageData.width * imageData.height);
+            for (let i = 0; i < gray.length; i += 1) {
+                const baseIndex = i * 4;
+                const alpha = imageData.data[baseIndex + 3] / 255;
+                const red = imageData.data[baseIndex];
+                const green = imageData.data[baseIndex + 1];
+                const blue = imageData.data[baseIndex + 2];
+                gray[i] = (0.299 * red + 0.587 * green + 0.114 * blue) * alpha + 248 * (1 - alpha);
+            }
+            return gray;
+        }
+
+        function computeEdgeMagnitudes(gray, width, height) {
+            const edges = new Float32Array(width * height);
+            for (let y = 1; y < height - 1; y += 1) {
+                for (let x = 1; x < width - 1; x += 1) {
+                    const index = y * width + x;
+                    const topLeft = gray[index - width - 1];
+                    const top = gray[index - width];
+                    const topRight = gray[index - width + 1];
+                    const left = gray[index - 1];
+                    const right = gray[index + 1];
+                    const bottomLeft = gray[index + width - 1];
+                    const bottom = gray[index + width];
+                    const bottomRight = gray[index + width + 1];
+
+                    const gradientX =
+                        -topLeft + topRight
+                        - 2 * left + 2 * right
+                        - bottomLeft + bottomRight;
+                    const gradientY =
+                        -topLeft - 2 * top - topRight
+                        + bottomLeft + 2 * bottom + bottomRight;
+                    edges[index] = Math.sqrt(gradientX * gradientX + gradientY * gradientY);
+                }
+            }
+            return edges;
+        }
+
+        function clamp(value, min, max) {
+            return Math.min(Math.max(value, min), max);
+        }
+
+        function roundedRectPath(context, x, y, width, height, radius) {
+            const r = Math.min(radius, width / 2, height / 2);
+            context.beginPath();
+            context.moveTo(x + r, y);
+            context.arcTo(x + width, y, x + width, y + height, r);
+            context.arcTo(x + width, y + height, x, y + height, r);
+            context.arcTo(x, y + height, x, y, r);
+            context.arcTo(x, y, x + width, y, r);
+            context.closePath();
+        }
+
+        function fillRoundedRect(context, x, y, width, height, radius) {
+            roundedRectPath(context, x, y, width, height, radius);
+            context.fill();
+        }
+
+        function strokeRoundedRect(context, x, y, width, height, radius) {
+            roundedRectPath(context, x, y, width, height, radius);
+            context.stroke();
+        }
+
+        function sampleAverageColor(imageData, x, y, width, height) {
+            const x0 = clamp(Math.floor(x), 0, imageData.width - 1);
+            const y0 = clamp(Math.floor(y), 0, imageData.height - 1);
+            const x1 = clamp(Math.ceil(x + width), x0 + 1, imageData.width);
+            const y1 = clamp(Math.ceil(y + height), y0 + 1, imageData.height);
+            const step = Math.max(1, Math.round(Math.min(x1 - x0, y1 - y0) / 18));
+            let red = 0;
+            let green = 0;
+            let blue = 0;
+            let count = 0;
+
+            for (let row = y0; row < y1; row += step) {
+                for (let col = x0; col < x1; col += step) {
+                    const index = (row * imageData.width + col) * 4;
+                    red += imageData.data[index];
+                    green += imageData.data[index + 1];
+                    blue += imageData.data[index + 2];
+                    count += 1;
+                }
+            }
+
+            if (count === 0) {
+                return { red: 248, green: 240, blue: 230 };
+            }
+
+            return {
+                red: Math.round(red / count),
+                green: Math.round(green / count),
+                blue: Math.round(blue / count),
+            };
+        }
+
+        function detectTextBoxes(sourceCanvas) {
+            const { width, height } = sourceCanvas;
+            const context = sourceCanvas.getContext("2d", { willReadFrequently: true });
+            const imageData = context.getImageData(0, 0, width, height);
+            const gray = extractGrayMap(imageData);
+            const rowDensity = new Float32Array(height);
+
+            for (let y = 0; y < height; y += 1) {
+                let count = 0;
+                for (let x = 0; x < width; x += 1) {
+                    if (gray[y * width + x] < 166) {
+                        count += 1;
+                    }
+                }
+                rowDensity[y] = count;
+            }
+
+            const rowThreshold = width * 0.14;
+            const bands = [];
+            let bandStart = -1;
+
+            for (let y = 0; y < height; y += 1) {
+                const active = rowDensity[y] > rowThreshold;
+                if (active && bandStart < 0) {
+                    bandStart = y;
+                    continue;
+                }
+                if (!active && bandStart >= 0) {
+                    if (y - bandStart >= 4) {
+                        bands.push([bandStart, y]);
+                    }
+                    bandStart = -1;
+                }
+            }
+
+            if (bandStart >= 0) {
+                bands.push([bandStart, height]);
+            }
+
+            const boxes = [];
+
+            for (const [bandTop, bandBottom] of bands) {
+                const bandHeight = bandBottom - bandTop;
+                if (bandHeight > height * 0.18) {
+                    continue;
+                }
+
+                const columnDensity = new Float32Array(width);
+                for (let x = 0; x < width; x += 1) {
+                    let count = 0;
+                    for (let y = bandTop; y < bandBottom; y += 1) {
+                        if (gray[y * width + x] < 172) {
+                            count += 1;
+                        }
+                    }
+                    columnDensity[x] = count;
+                }
+
+                const columnThreshold = Math.max(2, bandHeight * 0.32);
+                let boxStart = -1;
+
+                for (let x = 0; x < width; x += 1) {
+                    const active = columnDensity[x] >= columnThreshold;
+                    if (active && boxStart < 0) {
+                        boxStart = x;
+                        continue;
+                    }
+                    if (!active && boxStart >= 0) {
+                        const boxWidth = x - boxStart;
+                        if (boxWidth >= width * 0.05) {
+                            boxes.push({
+                                x: clamp(boxStart - 8, 0, width - 1),
+                                y: clamp(bandTop - 5, 0, height - 1),
+                                width: clamp(boxWidth + 16, 12, width),
+                                height: clamp(bandHeight + 10, 10, height),
+                            });
+                        }
+                        boxStart = -1;
+                    }
+                }
+
+                if (boxStart >= 0) {
+                    const boxWidth = width - boxStart;
+                    if (boxWidth >= width * 0.05) {
+                        boxes.push({
+                            x: clamp(boxStart - 8, 0, width - 1),
+                            y: clamp(bandTop - 5, 0, height - 1),
+                            width: clamp(boxWidth + 12, 12, width),
+                            height: clamp(bandHeight + 10, 10, height),
+                        });
+                    }
+                }
+            }
+
+            boxes.sort((a, b) => (b.width * b.height) - (a.width * a.height));
+            const limitedBoxes = boxes.slice(0, 10);
+
+            if (limitedBoxes.length >= 2) {
+                return limitedBoxes;
+            }
+
+            return [
+                { x: width * 0.12, y: height * 0.18, width: width * 0.36, height: Math.max(18, height * 0.075) },
+                { x: width * 0.46, y: height * 0.44, width: width * 0.28, height: Math.max(18, height * 0.08) },
+                { x: width * 0.18, y: height * 0.68, width: width * 0.34, height: Math.max(18, height * 0.072) },
+            ];
+        }
+
+        function createOcrOverlayCanvas(sourceCanvas, textBoxes) {
+            const { width, height } = sourceCanvas;
+            const { canvas, context } = createCanvasSurface(width, height);
+            const lineWidth = Math.max(2, width / 360);
+            context.save();
+            context.lineWidth = lineWidth;
+            context.setLineDash([Math.max(12, width / 30), Math.max(8, width / 50)]);
+
+            textBoxes.forEach((box, index) => {
+                const labelWidth = Math.max(38, box.width * 0.18);
+                const labelHeight = Math.max(18, box.height * 0.44);
+                context.strokeStyle = index % 2 === 0 ? "rgba(215, 129, 42, 0.94)" : "rgba(67, 121, 212, 0.92)";
+                strokeRoundedRect(context, box.x, box.y, box.width, box.height, Math.max(8, box.height * 0.22));
+                context.fillStyle = "rgba(18, 25, 35, 0.74)";
+                fillRoundedRect(context, box.x, Math.max(0, box.y - labelHeight - 4), labelWidth, labelHeight, labelHeight / 2);
+                context.fillStyle = "#fffdf9";
+                context.font = `700 ${Math.max(11, Math.round(width / 64))}px ui-monospace, SFMono-Regular, Menlo, monospace`;
+                context.textAlign = "left";
+                context.fillText("OCR", box.x + 10, Math.max(14, box.y - 8));
+            });
+
+            context.restore();
+            return canvas;
+        }
+
+        function createTextErasedSurface(sourceCanvas, textBoxes) {
+            const { width, height } = sourceCanvas;
+            const sourceContext = sourceCanvas.getContext("2d", { willReadFrequently: true });
+            const sourceData = sourceContext.getImageData(0, 0, width, height);
+            const { canvas, context } = createCanvasSurface(width, height);
+            context.drawImage(sourceCanvas, 0, 0);
+
+            for (const box of textBoxes) {
+                const color = sampleAverageColor(
+                    sourceData,
+                    box.x - box.width * 0.18,
+                    box.y - box.height * 0.18,
+                    box.width * 1.36,
+                    box.height * 1.36
+                );
+                context.save();
+                context.fillStyle = `rgba(${color.red}, ${color.green}, ${color.blue}, 0.97)`;
+                fillRoundedRect(context, box.x - 2, box.y - 1, box.width + 4, box.height + 2, Math.max(8, box.height * 0.24));
+                context.strokeStyle = `rgba(${Math.max(0, color.red - 12)}, ${Math.max(0, color.green - 10)}, ${Math.max(0, color.blue - 8)}, 0.24)`;
+                context.lineWidth = Math.max(1, box.height / 18);
+                const stripeStep = Math.max(4, box.height / 5);
+                for (let y = box.y + stripeStep * 0.7; y < box.y + box.height; y += stripeStep) {
+                    context.beginPath();
+                    context.moveTo(box.x + 6, y);
+                    context.lineTo(box.x + box.width - 6, y);
+                    context.stroke();
+                }
+                context.restore();
+            }
+
+            return canvas;
+        }
+
+        function detectArrowSegments(sourceCanvas) {
+            const { width, height } = sourceCanvas;
+            const context = sourceCanvas.getContext("2d", { willReadFrequently: true });
+            const imageData = context.getImageData(0, 0, width, height);
+            const gray = extractGrayMap(imageData);
+            const edges = computeEdgeMagnitudes(gray, width, height);
+            const candidates = [];
+            const rowStep = Math.max(6, Math.round(height / 48));
+            const columnStep = Math.max(6, Math.round(width / 52));
+            const minimumHorizontalLength = Math.max(28, Math.round(width * 0.14));
+            const minimumVerticalLength = Math.max(28, Math.round(height * 0.14));
+
+            for (let y = rowStep; y < height - rowStep; y += rowStep) {
+                let start = -1;
+                let score = 0;
+                for (let x = 1; x < width - 1; x += 1) {
+                    const signal = edges[y * width + x] * 0.7 + (255 - gray[y * width + x]) * 0.42;
+                    if (signal > 84) {
+                        if (start < 0) {
+                            start = x;
+                        }
+                        score += signal;
+                        continue;
+                    }
+                    if (start >= 0) {
+                        const length = x - start;
+                        if (length >= minimumHorizontalLength) {
+                            candidates.push({
+                                orientation: "horizontal",
+                                x1: start,
+                                y1: y,
+                                x2: x,
+                                y2: y,
+                                score: score / length,
+                            });
+                        }
+                        start = -1;
+                        score = 0;
+                    }
+                }
+            }
+
+            for (let x = columnStep; x < width - columnStep; x += columnStep) {
+                let start = -1;
+                let score = 0;
+                for (let y = 1; y < height - 1; y += 1) {
+                    const signal = edges[y * width + x] * 0.7 + (255 - gray[y * width + x]) * 0.42;
+                    if (signal > 84) {
+                        if (start < 0) {
+                            start = y;
+                        }
+                        score += signal;
+                        continue;
+                    }
+                    if (start >= 0) {
+                        const length = y - start;
+                        if (length >= minimumVerticalLength) {
+                            candidates.push({
+                                orientation: "vertical",
+                                x1: x,
+                                y1: start,
+                                x2: x,
+                                y2: y,
+                                score: score / length,
+                            });
+                        }
+                        start = -1;
+                        score = 0;
+                    }
+                }
+            }
+
+            candidates.sort((a, b) => {
+                const aLength = Math.hypot(a.x2 - a.x1, a.y2 - a.y1);
+                const bLength = Math.hypot(b.x2 - b.x1, b.y2 - b.y1);
+                return (b.score * bLength) - (a.score * aLength);
+            });
+
+            const arrows = [];
+            for (const candidate of candidates) {
+                const centerX = (candidate.x1 + candidate.x2) / 2;
+                const centerY = (candidate.y1 + candidate.y2) / 2;
+                const duplicated = arrows.some((arrow) => {
+                    if (arrow.orientation !== candidate.orientation) {
+                        return false;
+                    }
+                    return Math.abs(((arrow.x1 + arrow.x2) / 2) - centerX) < width * 0.08
+                        && Math.abs(((arrow.y1 + arrow.y2) / 2) - centerY) < height * 0.08;
+                });
+                if (duplicated) {
+                    continue;
+                }
+                arrows.push(candidate);
+                if (arrows.length >= 5) {
+                    break;
+                }
+            }
+
+            if (arrows.length > 0) {
+                return arrows;
+            }
+
+            return [
+                {
+                    orientation: "horizontal",
+                    x1: width * 0.16,
+                    y1: height * 0.34,
+                    x2: width * 0.48,
+                    y2: height * 0.34,
+                    score: 1,
+                },
+                {
+                    orientation: "vertical",
+                    x1: width * 0.7,
+                    y1: height * 0.22,
+                    x2: width * 0.7,
+                    y2: height * 0.56,
+                    score: 1,
+                },
+            ];
+        }
+
+        function drawArrow(context, arrow, color, lineWidth, alpha = 1) {
+            const dx = arrow.x2 - arrow.x1;
+            const dy = arrow.y2 - arrow.y1;
+            const length = Math.hypot(dx, dy) || 1;
+            const unitX = dx / length;
+            const unitY = dy / length;
+            const headLength = Math.max(12, lineWidth * 4.4);
+            const headWidth = Math.max(8, lineWidth * 2.8);
+            const backX = arrow.x2 - unitX * headLength;
+            const backY = arrow.y2 - unitY * headLength;
+            const normalX = -unitY;
+            const normalY = unitX;
+
+            context.save();
+            context.globalAlpha = alpha;
+            context.strokeStyle = color;
+            context.fillStyle = color;
+            context.lineWidth = lineWidth;
+            context.lineCap = "round";
+            context.lineJoin = "round";
+            context.beginPath();
+            context.moveTo(arrow.x1, arrow.y1);
+            context.lineTo(arrow.x2, arrow.y2);
+            context.stroke();
+            context.beginPath();
+            context.moveTo(arrow.x2, arrow.y2);
+            context.lineTo(backX + normalX * headWidth, backY + normalY * headWidth);
+            context.lineTo(backX - normalX * headWidth, backY - normalY * headWidth);
+            context.closePath();
+            context.fill();
+            context.restore();
+        }
+
+        function createArrowOverlayCanvas(sourceCanvas, arrows) {
+            const { width, height } = sourceCanvas;
+            const { canvas, context } = createCanvasSurface(width, height);
+            const lineWidth = Math.max(3, width / 220);
+
+            for (const arrow of arrows) {
+                drawArrow(context, arrow, "rgba(255, 253, 249, 0.18)", lineWidth * 2.4, 1);
+                drawArrow(context, arrow, "rgba(215, 129, 42, 0.94)", lineWidth, 1);
+            }
+
+            return canvas;
+        }
+
+        function createArrowErasedSurface(sourceCanvas, arrows) {
+            const { width, height } = sourceCanvas;
+            const sourceContext = sourceCanvas.getContext("2d", { willReadFrequently: true });
+            const sourceData = sourceContext.getImageData(0, 0, width, height);
+            const { canvas, context } = createCanvasSurface(width, height);
+            context.drawImage(sourceCanvas, 0, 0);
+
+            for (const arrow of arrows) {
+                const lineWidth = Math.max(12, width / 44);
+                const sampleBox = {
+                    x: Math.min(arrow.x1, arrow.x2) - lineWidth,
+                    y: Math.min(arrow.y1, arrow.y2) - lineWidth,
+                    width: Math.abs(arrow.x2 - arrow.x1) + lineWidth * 2,
+                    height: Math.abs(arrow.y2 - arrow.y1) + lineWidth * 2,
+                };
+                const color = sampleAverageColor(
+                    sourceData,
+                    sampleBox.x,
+                    sampleBox.y,
+                    sampleBox.width,
+                    sampleBox.height
+                );
+                drawArrow(
+                    context,
+                    arrow,
+                    `rgba(${color.red}, ${color.green}, ${color.blue}, 0.98)`,
+                    lineWidth,
+                    1
+                );
+            }
+
+            return canvas;
+        }
+
+        function createSamOverlayCanvas(sourceCanvas) {
+            const { width, height } = sourceCanvas;
+            const sourceContext = sourceCanvas.getContext("2d", { willReadFrequently: true });
+            const sourceData = sourceContext.getImageData(0, 0, width, height);
+            const gray = extractGrayMap(sourceData);
+            const edges = computeEdgeMagnitudes(gray, width, height);
+            const { canvas, context } = createCanvasSurface(width, height);
+            const palette = [
+                [76, 137, 245],
+                [215, 129, 42],
+                [84, 168, 112],
+                [227, 105, 164],
+            ];
+            const cellWidth = Math.max(24, Math.round(width / 16));
+            const cellHeight = Math.max(22, Math.round(height / 14));
+
+            for (let y = 0; y < height; y += cellHeight) {
+                for (let x = 0; x < width; x += cellWidth) {
+                    let graySum = 0;
+                    let edgeSum = 0;
+                    let count = 0;
+                    for (let row = y; row < Math.min(height, y + cellHeight); row += 3) {
+                        for (let col = x; col < Math.min(width, x + cellWidth); col += 3) {
+                            const index = row * width + col;
+                            graySum += gray[index];
+                            edgeSum += edges[index];
+                            count += 1;
+                        }
+                    }
+                    const darkness = 1 - (graySum / Math.max(1, count) / 255);
+                    const structure = (edgeSum / Math.max(1, count)) / 180;
+                    const score = darkness * 0.62 + structure * 0.58;
+                    if (score < 0.28) {
+                        continue;
+                    }
+
+                    const [red, green, blue] = palette[Math.abs((Math.floor(x / cellWidth) + Math.floor(y / cellHeight))) % palette.length];
+                    const alpha = Math.min(0.34, 0.12 + score * 0.24);
+                    context.save();
+                    context.fillStyle = `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+                    fillRoundedRect(
+                        context,
+                        x + 2,
+                        y + 2,
+                        Math.max(8, Math.min(cellWidth - 4, width - x - 4)),
+                        Math.max(8, Math.min(cellHeight - 4, height - y - 4)),
+                        Math.max(8, Math.min(cellWidth, cellHeight) * 0.24)
+                    );
+                    if (score > 0.42) {
+                        context.strokeStyle = `rgba(${red}, ${green}, ${blue}, ${Math.min(0.72, alpha + 0.24)})`;
+                        context.lineWidth = Math.max(1.5, width / 480);
+                        strokeRoundedRect(
+                            context,
+                            x + 2.5,
+                            y + 2.5,
+                            Math.max(8, Math.min(cellWidth - 5, width - x - 5)),
+                            Math.max(8, Math.min(cellHeight - 5, height - y - 5)),
+                            Math.max(8, Math.min(cellWidth, cellHeight) * 0.22)
+                        );
+                    }
+                    context.restore();
+                }
+            }
+
+            return canvas;
+        }
+
+        function createMergeOverlayCanvas(sourceCanvas, ocrOverlayCanvas, arrowOverlayCanvas, samOverlayCanvas, imageWidth, imageHeight) {
+            const { width, height } = sourceCanvas;
+            const { canvas, context } = createCanvasSurface(width, height);
+            context.drawImage(samOverlayCanvas, 0, 0);
+            context.save();
+            context.globalAlpha = 0.16;
+            context.drawImage(ocrOverlayCanvas, 0, 0);
+            context.restore();
+            context.save();
+            context.globalAlpha = 0.28;
+            context.drawImage(arrowOverlayCanvas, 0, 0);
+            context.restore();
+
+            const margin = Math.max(16, Math.round(Math.min(width, height) * 0.05));
+            context.strokeStyle = "rgba(255, 253, 249, 0.24)";
+            context.lineWidth = Math.max(1.5, width / 540);
+            const gridX = Math.max(40, Math.round(width / 8));
+            const gridY = Math.max(36, Math.round(height / 7));
+            for (let x = gridX; x < width; x += gridX) {
+                context.beginPath();
+                context.moveTo(x + 0.5, margin);
+                context.lineTo(x + 0.5, height - margin);
+                context.stroke();
+            }
+            for (let y = gridY; y < height; y += gridY) {
+                context.beginPath();
+                context.moveTo(margin, y + 0.5);
+                context.lineTo(width - margin, y + 0.5);
+                context.stroke();
+            }
+
+            context.strokeStyle = "rgba(215, 129, 42, 0.92)";
+            context.lineWidth = Math.max(2, width / 340);
+            strokeRoundedRect(context, margin, margin, width - margin * 2, height - margin * 2, Math.max(12, margin * 0.6));
+
+            const badgeWidth = Math.min(Math.max(170, Math.round(width * 0.36)), width - margin * 2);
+            const badgeHeight = Math.max(22, Math.round(height * 0.055));
+            const badgeX = Math.max(margin, width - badgeWidth - 18);
+            const badgeY = Math.max(margin, height - badgeHeight - 18);
+            context.fillStyle = "rgba(18, 25, 35, 0.72)";
+            fillRoundedRect(context, badgeX, badgeY, badgeWidth, badgeHeight, badgeHeight / 2);
+            context.fillStyle = "#fffdf9";
+            context.font = `600 ${Math.max(12, Math.round(width / 56))}px ui-monospace, SFMono-Regular, Menlo, monospace`;
+            context.textAlign = "left";
+            context.fillText(`viewBox 0 0 ${imageWidth} ${imageHeight}`, badgeX + 12, badgeY + badgeHeight - 6);
+            return canvas;
+        }
+
+        function easeOutCubic(value) {
+            return 1 - ((1 - value) ** 3);
+        }
+
+        function animateValue(durationMs, onUpdate) {
+            return new Promise((resolve) => {
+                const startTime = performance.now();
+
+                const frame = (now) => {
+                    const progress = Math.min(1, (now - startTime) / durationMs);
+                    onUpdate(progress);
+                    if (progress < 1) {
+                        window.requestAnimationFrame(frame);
+                        return;
+                    }
+                    resolve();
+                };
+
+                window.requestAnimationFrame(frame);
+            });
+        }
+
+        function drawSweepHighlight(context, width, height, progress, colorStops) {
+            const centerX = (-0.3 + progress * 1.6) * width;
+            const highlightWidth = Math.max(48, width * 0.14);
+            const gradient = context.createLinearGradient(
+                centerX - highlightWidth,
+                0,
+                centerX + highlightWidth,
+                0
+            );
+            gradient.addColorStop(0, colorStops[0]);
+            gradient.addColorStop(0.5, colorStops[1]);
+            gradient.addColorStop(1, colorStops[0]);
+            context.fillStyle = gradient;
+            context.fillRect(0, 0, width, height);
+        }
+
+        function drawScaledSurface(context, surface, alpha = 1) {
+            context.save();
+            context.globalAlpha = alpha;
+            context.drawImage(surface, 0, 0, context.canvas.width, context.canvas.height);
+            context.restore();
+        }
+
+        function drawRevealSurface(context, surface, progress, alpha = 1) {
+            context.save();
+            context.beginPath();
+            context.rect(0, 0, context.canvas.width * progress, context.canvas.height);
+            context.clip();
+            drawScaledSurface(context, surface, alpha);
+            context.restore();
+        }
+
+        function renderExportOverlayFrame(stageIndex, stageProgress, surfaces) {
+            const canvas = elements.exportOverlayCanvas;
+            const context = canvas.getContext("2d");
+            const width = canvas.width;
+            const height = canvas.height;
+            const eased = easeOutCubic(stageProgress);
+
+            context.clearRect(0, 0, width, height);
+            drawScaledSurface(context, surfaces.raster, 1);
+            context.fillStyle = "rgba(18, 25, 35, 0.05)";
+            context.fillRect(0, 0, width, height);
+
+            if (stageIndex === 0) {
+                drawScaledSurface(context, surfaces.ocr, 0.16 + eased * 0.88);
+                drawSweepHighlight(context, width, height, stageProgress, [
+                    "rgba(255, 253, 249, 0)",
+                    "rgba(255, 253, 249, 0.22)",
+                ]);
+                return;
+            }
+
+            if (stageIndex === 1) {
+                drawScaledSurface(context, surfaces.ocr, 0.22);
+                drawRevealSurface(context, surfaces.textErased, eased, 1);
+                drawSweepHighlight(context, width, height, stageProgress, [
+                    "rgba(215, 129, 42, 0)",
+                    "rgba(215, 129, 42, 0.24)",
+                ]);
+                return;
+            }
+
+            if (stageIndex === 2) {
+                drawScaledSurface(context, surfaces.textErased, 1);
+                drawScaledSurface(context, surfaces.arrows, 0.16 + eased * 0.92);
+                drawSweepHighlight(context, width, height, stageProgress, [
+                    "rgba(24, 49, 79, 0)",
+                    "rgba(24, 49, 79, 0.24)",
+                ]);
+                return;
+            }
+
+            if (stageIndex === 3) {
+                drawScaledSurface(context, surfaces.textErased, 1);
+                drawScaledSurface(context, surfaces.arrows, Math.max(0, 0.42 - eased * 0.42));
+                drawRevealSurface(context, surfaces.arrowErased, eased, 1);
+                drawSweepHighlight(context, width, height, stageProgress, [
+                    "rgba(255, 253, 249, 0)",
+                    "rgba(255, 253, 249, 0.22)",
+                ]);
+                return;
+            }
+
+            if (stageIndex === 4) {
+                drawScaledSurface(context, surfaces.arrowErased, 1);
+                drawScaledSurface(context, surfaces.sam, 0.12 + eased * 0.86);
+                drawSweepHighlight(context, width, height, stageProgress, [
+                    "rgba(84, 168, 112, 0)",
+                    "rgba(84, 168, 112, 0.22)",
+                ]);
+                return;
+            }
+
+            drawScaledSurface(context, surfaces.arrowErased, 1);
+            drawScaledSurface(context, surfaces.sam, 0.22);
+            drawScaledSurface(context, surfaces.merge, 0.14 + eased * 0.92);
+            drawSweepHighlight(context, width, height, stageProgress, [
+                "rgba(255, 253, 249, 0)",
+                "rgba(255, 253, 249, 0.28)",
+            ]);
+        }
+
+        async function animateExportStage(stageIndex, surfaces, exportWidth, exportHeight) {
+            const metricText = [
+                "OCR",
+                "Erase text",
+                "Detect arrows",
+                "Erase arrows before SAM",
+                "SAM",
+                `Merge ${exportWidth}x${exportHeight}`,
+            ][stageIndex];
+
+            elements.exportOverlayLabel.textContent = EXPORT_STAGE_LABELS[stageIndex];
+            elements.exportOverlayMetric.textContent = metricText;
+            elements.exportProgressSteps[stageIndex].dataset.state = "active";
+            await animateValue(460, (progress) => {
+                renderExportOverlayFrame(stageIndex, progress, surfaces);
+            });
+            elements.exportProgressSteps[stageIndex].dataset.state = "done";
+        }
+
+        async function loadExportImage(source) {
+            return new Promise((resolve, reject) => {
+                const image = new Image();
+                image.onload = () => resolve(image);
+                image.onerror = () => reject(new Error("エクスポート用の画像を読み込めませんでした。"));
+                image.src = source;
+            });
+        }
+
         function showModalResult(imageSrc, imageDataUrl) {
             if (!imageSrc) {
                 showModalError("生成画像を表示できませんでした。");
@@ -1049,15 +2075,18 @@
             state.generatedImageDataUrl = imageDataUrl || (imageSrc.startsWith("data:") ? imageSrc : "");
             state.generatedImageWidth = 0;
             state.generatedImageHeight = 0;
+            state.exportInProgress = false;
             elements.modalLoading.hidden = true;
             elements.modalFeedback.hidden = true;
             elements.modalFeedback.textContent = "";
             elements.modalResult.hidden = false;
             elements.saveSvgButton.disabled = false;
+            resetExportVisualization();
 
             const image = elements.modalImage;
             image.onload = () => {
                 updateGeneratedImageSize();
+                syncExportOverlayCanvasSize();
                 image.onload = null;
                 image.onerror = null;
             };
@@ -1073,6 +2102,7 @@
 
             if (image.complete && image.naturalWidth > 0) {
                 updateGeneratedImageSize();
+                syncExportOverlayCanvasSize();
                 image.onload = null;
                 image.onerror = null;
             }
@@ -1086,30 +2116,82 @@
                 .replaceAll(">", "&gt;");
         }
 
-        function downloadGeneratedSvg() {
-            if (!state.generatedImageDataUrl) {
+        async function exportGeneratedSvg() {
+            const imageHref = state.generatedImageDataUrl || state.generatedImageSrc;
+            if (!imageHref || state.exportInProgress) {
                 return;
             }
 
-            const width = state.generatedImageWidth || 1024;
-            const height = state.generatedImageHeight || 768;
-            const svgText = [
-                '<?xml version="1.0" encoding="UTF-8"?>',
-                `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`,
-                `<image href="${escapeSvgAttribute(state.generatedImageDataUrl)}" width="${width}" height="${height}" preserveAspectRatio="xMidYMid meet" />`,
-                "</svg>",
-            ].join("");
+            state.exportInProgress = true;
+            elements.saveSvgButton.disabled = true;
+            elements.exportOverlay.hidden = false;
+            try {
+                await sleep(16);
+                const overlaySize = syncExportOverlayCanvasSize();
+                const exportImage = await loadExportImage(state.generatedImageSrc);
+                const exportWidth = exportImage.naturalWidth || state.generatedImageWidth || 1024;
+                const exportHeight = exportImage.naturalHeight || state.generatedImageHeight || 768;
+                const surfaces = {
+                    raster: createRasterSurface(exportImage, overlaySize.width, overlaySize.height),
+                };
+                const textBoxes = detectTextBoxes(surfaces.raster);
+                surfaces.ocr = createOcrOverlayCanvas(surfaces.raster, textBoxes);
+                surfaces.textErased = createTextErasedSurface(surfaces.raster, textBoxes);
+                const arrows = detectArrowSegments(surfaces.textErased);
+                surfaces.arrows = createArrowOverlayCanvas(surfaces.textErased, arrows);
+                surfaces.arrowErased = createArrowErasedSurface(surfaces.textErased, arrows);
+                surfaces.sam = createSamOverlayCanvas(surfaces.arrowErased);
+                surfaces.merge = createMergeOverlayCanvas(
+                    surfaces.arrowErased,
+                    surfaces.ocr,
+                    surfaces.arrows,
+                    surfaces.sam,
+                    exportWidth,
+                    exportHeight
+                );
 
-            const blob = new Blob([svgText], { type: "image/svg+xml;charset=utf-8" });
-            const downloadUrl = URL.createObjectURL(blob);
-            const link = document.createElement("a");
-            const filenameBase = state.sampleName || "generated_figure";
-            link.href = downloadUrl;
-            link.download = `${filenameBase}.svg`;
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-            URL.revokeObjectURL(downloadUrl);
+                elements.exportProgressSteps.forEach((step) => {
+                    step.dataset.state = "idle";
+                });
+
+                for (const [index] of EXPORT_STAGE_LABELS.entries()) {
+                    await animateExportStage(index, surfaces, exportWidth, exportHeight);
+                    await sleep(90);
+                }
+
+                const width = state.generatedImageWidth || exportWidth || 1024;
+                const height = state.generatedImageHeight || exportHeight || 768;
+                const svgText = [
+                    '<?xml version="1.0" encoding="UTF-8"?>',
+                    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`,
+                    `<image href="${escapeSvgAttribute(imageHref)}" width="${width}" height="${height}" preserveAspectRatio="xMidYMid meet" />`,
+                    "</svg>",
+                ].join("");
+
+                const blob = new Blob([svgText], { type: "image/svg+xml;charset=utf-8" });
+                const downloadUrl = URL.createObjectURL(blob);
+                const link = document.createElement("a");
+                const filenameBase = state.sampleName || "generated_figure";
+                link.href = downloadUrl;
+                link.download = `${filenameBase}.svg`;
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                URL.revokeObjectURL(downloadUrl);
+                elements.exportOverlayLabel.textContent = "SVG export complete";
+                elements.exportOverlayMetric.textContent = `${filenameBase}.svg ready`;
+                renderExportOverlayFrame(5, 1, surfaces);
+                await sleep(520);
+                resetExportVisualization();
+            } catch (error) {
+                elements.exportOverlayLabel.textContent = "SVG export failed";
+                elements.exportOverlayMetric.textContent = error.message;
+                await sleep(900);
+                resetExportVisualization();
+            } finally {
+                state.exportInProgress = false;
+                elements.saveSvgButton.disabled = false;
+            }
         }
 
         function buildLoadedAssistantMessage(data) {
@@ -1129,6 +2211,7 @@
             state.mode = "new";
             state.sampleName = "";
             state.compiledInstruction = "";
+            state.assistantActivity = "";
             state.messages = [
                 {
                     role: "assistant",
@@ -1176,6 +2259,7 @@
                 state.mode = "existing";
                 state.sampleName = data.name;
                 state.compiledInstruction = data.description || "";
+                clearAssistantActivity();
                 state.messages = [
                     {
                         role: "user",
@@ -1249,6 +2333,7 @@
             }
 
             setBusy(true);
+            setAssistantActivity("Assistant が図を生成しています。");
             clearGeneratedImage();
             showModalLoading("図を生成しています。しばらくお待ちください。");
             setStatus(
@@ -1276,6 +2361,7 @@
                     throw new Error(data.error || "図生成に失敗しました。");
                 }
 
+                clearAssistantActivity();
                 showModalResult(data.image_url || data.image_data_url, data.image_data_url);
                 if (elements.generationMeta) {
                     elements.generationMeta.textContent = "ポップアップに生成結果を表示しています。";
@@ -1291,10 +2377,12 @@
                     "PaperBanana の生成結果をポップアップに表示しました。"
                 );
             } catch (error) {
+                clearAssistantActivity();
                 pushMessage("assistant", `図生成でエラーが発生しました: ${error.message}`);
                 showModalError(error.message);
                 setStatus("生成失敗", "needs-info", error.message);
             } finally {
+                clearAssistantActivity();
                 setBusy(false);
             }
         }
@@ -1313,6 +2401,7 @@
             syncDraftMeta();
 
             setBusy(true);
+            setAssistantActivity("解析しています。");
             setStatus("解析中", "working", "説明の十分性を判定しています。");
 
             try {
@@ -1333,6 +2422,7 @@
                     throw new Error(data.error || "判定に失敗しました。");
                 }
 
+                clearAssistantActivity();
                 pushMessage("assistant", data.assistant_message || "判定結果を受け取りました。");
 
                 if (data.markdown_text) {
@@ -1349,9 +2439,11 @@
                     setStatus("追加情報が必要", "needs-info", "不足情報への回答を続けて入力してください。");
                 }
             } catch (error) {
+                clearAssistantActivity();
                 pushMessage("assistant", `エラーが発生しました: ${error.message}`);
                 setStatus("エラー", "needs-info", error.message);
             } finally {
+                clearAssistantActivity();
                 setBusy(false);
             }
         }
@@ -1377,7 +2469,7 @@
 
         elements.sendButton.addEventListener("click", submitInstruction);
         elements.generateButton.addEventListener("click", generateFigure);
-        elements.saveSvgButton.addEventListener("click", downloadGeneratedSvg);
+        elements.saveSvgButton.addEventListener("click", exportGeneratedSvg);
         elements.closeModalButton.addEventListener("click", closeGenerationModal);
 
         elements.chatInput.addEventListener("keydown", (event) => {
