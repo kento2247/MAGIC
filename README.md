@@ -1,72 +1,81 @@
-# mini_hackathon_2026
+# MAGIC
 
-論文図解ベクタライズのミニハッカソン用プロトタイプです。
+`MAGIC: Model Architecture Generation with Interactive Components`
 
-## 現在の構成
+論文手法の説明文から、図示に必要な情報の整理、キャプション生成、図の生成、SVG書き出しまでを対話的に行うFlaskベースのプロトタイプです。現時点の主導線はCLIスクリプトではなくWebアプリです。
 
+## 主な機能
+
+- 手法説明のレビュー
+  - `utils/InstructionCompletion.py` が説明文を評価し、図示に足りない情報があれば追加入力を促します。
+- 説明文の整形
+  - 同じく `InstructionCompletion` が、図生成向けのMarkdown要約と図キャプションを生成します。
+- 図の生成
+  - `utils/PaperBanana.py` を経由して画像生成パイプラインを呼び出します。
+- SVGエクスポート
+  - `utils/PingToSVG.py` がOCR、矢印抽出、SAMベースの領域推定を使ってSVG化します。
+- デモサンプルの読み込み
+  - `demo_sample/` 配下の既存サンプルをUIから選択できます。
+
+## 主要ファイル
+
+- `app.py`
+  - Flaskアプリ本体です。トップ画面、デモサンプル取得、図生成、SVG出力APIを提供します。
+- `templates/index.html`
+  - Web UI本体です。
+- `demo_sample/`
+  - 既存の説明文、キャプション、サンプル画像をまとめたデモデータです。
+- `assets/`
+  - 実験用の入力画像です。
 - `crop.py`
-  - フェーズ1。Qwen3-VL を使って意味的モジュールを検出し、クロップ PNG を保存します。
-  - 追加で `output/crop_manifest.json` を出力し、元画像上の座標を保持します。
-- `main.py`
-  - `Qwen-Image-Layered` の単体実行サンプルです。
+  - Qwen3-VLでモジュール領域を検出してクロップを保存する試験用スクリプトです。
 - `phase2_svg.py`
-  - フェーズ2。クロップ画像を `Qwen-Image-Layered` でレイヤー分離し、OCR/簡易分類/フォールバックを使ってハイブリッドSVGを再構築します。
+  - クロップ済み画像からハイブリッドSVGを再構築する試験用スクリプトです。
+- `main.py`
+  - `Qwen-Image-Layered` 単体実行の確認用スクリプトです。
+- `run_layered_crops.py`
+  - クロップ済み画像をまとめてレイヤー分離する補助スクリプトです。
 
-## ハッカソン向けの実運用方針
+## セットアップ
 
-現実的には、最初から全レイヤーを完全ベクタ化するよりも、
+前提:
 
-- テキストは OCR で `<text>`
-- ボックスや線は Potrace や簡易図形化
-- 難しいレイヤーは SVG 内に透過 PNG として埋め込み
+- Python `3.10.0`
+- `uv`
 
-という「ハイブリッドSVG」にするのが一番早いです。
-
-これでも `draw.io` や `Illustrator` 上で、
-
-- モジュール単位の `<g>` グループ
-- OCRできたラベルの直接編集
-- 失敗レイヤーの差し替え
-
-がしやすくなります。
-
-## 使い方
-
-### 1. フェーズ1: クロップ + manifest
+環境変数を用意します。
 
 ```bash
-python3 crop.py
+cp .env.template .env
 ```
 
-出力:
+`.env` に `OPENAI_API_KEY` を設定してください。
 
-- `output/*.png`
-- `output/crop_manifest.json`
-
-### 2. フェーズ2: レイヤー分離 + SVG再構築
+依存をインストールします。
 
 ```bash
-python3 phase2_svg.py \
-  --manifest output/crop_manifest.json \
-  --layers-dir phase2_layers \
-  --svg-out phase2_output/reconstructed.svg
+uv sync
 ```
 
-既に `phase2_layers/` にレイヤー PNG がある場合は、推論をスキップできます。
+## 起動方法
 
 ```bash
-python3 phase2_svg.py \
-  --manifest output/crop_manifest.json \
-  --layers-dir phase2_layers \
-  --svg-out phase2_output/reconstructed.svg \
-  --skip-inference
+uv run python app.py
 ```
 
-## 追加で入れると強くなるもの
+起動後、`http://127.0.0.1:8000` を開いて利用します。
 
-- `pytesseract`
-  - テキストレイヤーを `<text>` 化しやすくなります。
-- `potrace`
-  - 線や単純図形を `<path>` 化しやすくなります。
+## Webアプリの流れ
 
-依存がなくても `phase2_svg.py` 自体は動きますが、その場合はラスタ埋め込みフォールバックが増えます。
+1. 新規入力か、`demo_sample/` の既存サンプルを選択します。
+2. 手法説明を入力します。
+3. 説明が不足していれば、図示に必要な追加質問が返ります。
+4. 十分な説明がそろうと、Markdown要約と図キャプションが生成されます。
+5. 要約とキャプションを編集したうえで図を生成します。
+6. 生成画像をSVGとして書き出せます。
+
+## 補足
+
+- `OPENAI_API_KEY` が未設定でも一部のローカル判定は動作しますが、レビュー品質と整形品質は低下します。
+- 生成物やキャッシュはコミット対象から外しています。`generated_images/`、`output/`、`phase2_layers*/`、`phase2_output/`、`results/`、`__pycache__/`、`*.log` はローカル生成物として扱ってください。
+- 旧来のCLI検証スクリプトは残していますが、現状の主導線は `app.py` です。

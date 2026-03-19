@@ -9,6 +9,7 @@ import easyocr
 import numpy as np
 import torch
 from PIL import Image, ImageDraw
+from transformers import pipeline as hf_pipeline
 
 
 class PingToSVG:
@@ -120,7 +121,9 @@ class PingToSVG:
                 "label": "Detect arrows: 矢印の候補を検出しています。",
                 "metric": warnings["arrows"] or f"{len(pipeline['arrows'])} arrows",
                 "image": self._render_arrow_overlay(
-                    (width, height), pipeline["arrows"]
+                    (width, height),
+                    pipeline["arrows"],
+                    pipeline["image_before_arrow_erase"],
                 ),
                 "arrows": self._copy_arrows(pipeline["arrows"]),
             },
@@ -383,26 +386,19 @@ class PingToSVG:
         self,
         size: tuple[int, int],
         arrows: list[dict[str, Any]],
+        image: Image.Image,
     ) -> Image.Image:
         overlay = Image.new("RGBA", size, (0, 0, 0, 0))
-        draw = ImageDraw.Draw(overlay, "RGBA")
+        width, height = size
 
         for arrow in arrows:
-            x1, y1, x2, y2 = [int(v) for v in arrow["bbox"]]
-            draw.rounded_rectangle(
-                (x1, y1, x2, y2),
-                radius=10,
-                outline=(58, 150, 98, 235),
-                width=3,
-                fill=(140, 205, 164, 54),
+            cx1, cy1, _, _, crop = self._arrow_crop_rgba(
+                image,
+                arrow["bbox"],
+                width,
+                height,
             )
-            self._draw_badge(
-                draw,
-                (x1, max(0, y1 - 22)),
-                arrow["id"],
-                (18, 25, 35, 208),
-                (235, 255, 241, 255),
-            )
+            overlay.alpha_composite(crop, (cx1, cy1))
 
         return overlay
 
@@ -756,8 +752,6 @@ class PingToSVG:
         sam_model_id: str,
         device: str,
     ) -> list[dict[str, Any]]:
-        from transformers import pipeline as hf_pipeline
-
         if not self._is_hf_model_available_locally(sam_model_id):
             raise RuntimeError(f"SAM model not available locally: {sam_model_id}")
 
@@ -901,6 +895,16 @@ class PingToSVG:
         width: int,
         height: int,
     ) -> tuple[int, int, int, int, str]:
+        cx1, cy1, cx2, cy2, crop = self._arrow_crop_rgba(image, bbox, width, height)
+        return cx1, cy1, cx2, cy2, self._pil_to_b64(crop)
+
+    def _arrow_crop_rgba(
+        self,
+        image: Image.Image,
+        bbox: list[int],
+        width: int,
+        height: int,
+    ) -> tuple[int, int, int, int, Image.Image]:
         x1, y1, x2, y2 = bbox
         cx1 = max(0, x1 - self.CROP_PADDING)
         cy1 = max(0, y1 - self.CROP_PADDING)
@@ -919,7 +923,7 @@ class PingToSVG:
         rgba[arrow_mask, :3] = crop_rgb[arrow_mask]
         rgba[arrow_mask, 3] = 255
 
-        return cx1, cy1, cx2, cy2, self._pil_to_b64(Image.fromarray(rgba, "RGBA"))
+        return cx1, cy1, cx2, cy2, Image.fromarray(rgba, "RGBA")
 
     def _build_svg(
         self,
@@ -1025,3 +1029,8 @@ class PingToSVG:
 
         lines.append("</svg>")
         return "\n".join(lines)
+
+
+if __name__ == "__main__":
+    ping_to_svg = PingToSVG()
+    print(PingToSVG._is_hf_model_available_locally("facebook/sam-vit-base"))

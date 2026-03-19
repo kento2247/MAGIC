@@ -2011,7 +2011,7 @@
             context.restore();
         }
 
-        function drawTextEraseTransition(context, surfaces, progress) {
+function drawTextEraseTransition(context, surfaces, progress) {
             const transitions = [];
             surfaces.textBoxes.forEach((box, index) => {
                 const local = clamp(progress * 1.38 - index * 0.11, 0, 1);
@@ -2026,18 +2026,19 @@
                 const width = box.width + expandX * 2;
                 const height = box.height + expandY * 2;
                 const radius = Math.max(10, height * 0.24);
-                const wipeX = x - 12 + (width + 24) * local;
-                const brushHalf = Math.max(18, width * 0.16);
+                const revealWidth = Math.max(width * 0.08, width * local);
+                const wipeX = x + revealWidth;
+                const beamHalf = Math.max(18, width * 0.16);
                 transitions.push({
-                    box,
                     local,
                     x,
                     y,
                     width,
                     height,
                     radius,
+                    revealWidth,
                     wipeX,
-                    brushHalf,
+                    beamHalf,
                 });
             });
 
@@ -2052,18 +2053,15 @@
                 0.24
             );
 
-            transitions.forEach(({ local, x, y, width, height, radius, wipeX, brushHalf }, index) => {
-                const revealWidth = Math.max(width * 0.08, width * local);
+            transitions.forEach(({ local, x, y, width, height, radius, revealWidth, wipeX, beamHalf }, index) => {
                 const remainderX = x + revealWidth;
                 const remainderWidth = Math.max(0, width - revealWidth);
 
                 context.save();
                 roundedRectPath(context, x, y, width, height, radius);
                 context.clip();
-                context.fillStyle = `rgba(160, 74, 48, ${0.1 + (1 - local) * 0.18})`;
-                context.fillRect(x, y, width, height);
                 if (remainderWidth > 0) {
-                    context.fillStyle = `rgba(215, 129, 42, ${0.08 + (1 - local) * 0.12})`;
+                    context.fillStyle = `rgba(215, 129, 42, ${0.1 + (1 - local) * 0.16})`;
                     context.fillRect(remainderX, y, remainderWidth, height);
                 }
                 context.restore();
@@ -2080,34 +2078,22 @@
                 context.save();
                 roundedRectPath(context, x, y, width, height, radius);
                 context.clip();
-                context.globalAlpha = 0.24 + local * 0.34;
-                context.fillStyle = "rgba(255, 249, 239, 0.98)";
-                fillRoundedRect(context, x, y, width, height, radius);
-                const wipeGradient = context.createLinearGradient(wipeX - brushHalf, 0, wipeX + brushHalf, 0);
+                const wipeGradient = context.createLinearGradient(wipeX - beamHalf, 0, wipeX + beamHalf, 0);
                 wipeGradient.addColorStop(0, "rgba(255, 248, 236, 0)");
-                wipeGradient.addColorStop(0.45, "rgba(255, 248, 236, 0.38)");
-                wipeGradient.addColorStop(0.5, "rgba(255, 255, 255, 0.94)");
-                wipeGradient.addColorStop(0.55, "rgba(255, 248, 236, 0.38)");
+                wipeGradient.addColorStop(0.42, "rgba(255, 248, 236, 0.24)");
+                wipeGradient.addColorStop(0.5, "rgba(255, 255, 255, 0.96)");
+                wipeGradient.addColorStop(0.58, "rgba(255, 248, 236, 0.24)");
                 wipeGradient.addColorStop(1, "rgba(255, 248, 236, 0)");
                 context.fillStyle = wipeGradient;
                 context.fillRect(x - 4, y - 2, width + 8, height + 4);
                 context.restore();
 
                 context.save();
-                context.strokeStyle = `rgba(255, 255, 255, ${0.34 + local * 0.62})`;
-                context.lineWidth = Math.max(2, height / 8);
+                context.strokeStyle = `rgba(255, 255, 255, ${0.4 + local * 0.56})`;
+                context.lineWidth = Math.max(2.5, height / 7);
                 context.beginPath();
                 context.moveTo(wipeX, y - 4);
                 context.lineTo(wipeX, y + height + 4);
-                context.stroke();
-                context.restore();
-
-                context.save();
-                context.strokeStyle = `rgba(255, 241, 233, ${0.22 + (1 - local) * 0.38})`;
-                context.lineWidth = Math.max(1.5, height / 11);
-                context.beginPath();
-                context.moveTo(remainderX, y + 2);
-                context.lineTo(remainderX, y + height - 2);
                 context.stroke();
                 context.restore();
 
@@ -2136,22 +2122,16 @@
                 if (local <= 0) {
                     return;
                 }
-                const lineWidth = Math.max(3, context.canvas.width / 220);
-                drawArrow(context, arrow, "rgba(255, 253, 249, 0.2)", lineWidth * 2.8, 0.3 + local * 0.4);
-                drawArrow(context, arrow, "rgba(215, 129, 42, 0.96)", lineWidth * (0.72 + local * 0.38), 0.4 + local * 0.6);
-
-                const markerX = arrow.x1 + (arrow.x2 - arrow.x1) * local;
-                const markerY = arrow.y1 + (arrow.y2 - arrow.y1) * local;
+                const box = bboxToBox(arrow.bbox);
                 context.save();
-                context.fillStyle = "rgba(255, 253, 249, 0.9)";
-                context.beginPath();
-                context.arc(markerX, markerY, Math.max(4, lineWidth * 1.4), 0, Math.PI * 2);
-                context.fill();
+                context.strokeStyle = `rgba(84, 168, 112, ${0.18 + local * 0.22})`;
+                context.lineWidth = Math.max(1.5, Math.min(box.width, box.height) / 14);
+                strokeRoundedRect(context, box.x, box.y, box.width, box.height, Math.max(10, Math.min(box.width, box.height) * 0.2));
                 context.restore();
             });
         }
 
-        function drawArrowEraseTransition(context, surfaces, progress) {
+function drawArrowEraseTransition(context, surfaces, progress) {
             const transitions = [];
             surfaces.arrowSegments.forEach((arrow, index) => {
                 const local = clamp(progress * 1.35 - index * 0.16, 0, 1);
@@ -2159,11 +2139,16 @@
                     return;
                 }
 
-                const pad = Math.max(18, context.canvas.width / 30);
-                const x = Math.min(arrow.x1, arrow.x2) - pad;
-                const y = Math.min(arrow.y1, arrow.y2) - pad;
-                const width = Math.abs(arrow.x2 - arrow.x1) + pad * 2;
-                const height = Math.abs(arrow.y2 - arrow.y1) + pad * 2;
+                const box = bboxToBox(arrow.bbox);
+                const padX = Math.max(8, context.canvas.width / 70);
+                const padY = Math.max(8, context.canvas.height / 70);
+                const x = box.x - padX;
+                const y = box.y - padY;
+                const width = box.width + padX * 2;
+                const height = box.height + padY * 2;
+                const revealWidth = Math.max(width * 0.12, width * local);
+                const wipeX = x + revealWidth;
+                const beamHalf = Math.max(18, width * 0.09);
                 transitions.push({
                     arrow,
                     local,
@@ -2171,6 +2156,9 @@
                     y,
                     width,
                     height,
+                    revealWidth,
+                    wipeX,
+                    beamHalf,
                 });
             });
 
@@ -2182,64 +2170,49 @@
                     width: item.width,
                     height: item.height,
                 })),
-                0.2
+                0.1
             );
 
-            transitions.forEach(({ arrow, local, x, y, width, height }, index) => {
-                const revealWidth = Math.max(width * 0.12, width * local);
-                const revealHeight = Math.max(height * 0.12, height * local);
-                const clipWidth = arrow.orientation === "horizontal" ? revealWidth : width;
-                const clipHeight = arrow.orientation === "horizontal" ? height : revealHeight;
+            transitions.forEach(({ arrow, local, x, y, width, height, revealWidth, wipeX, beamHalf }) => {
+                const radius = Math.max(8, Math.min(width, height) * 0.14);
+                const remainderX = x + revealWidth;
+                const remainderWidth = Math.max(0, width - revealWidth);
 
                 context.save();
-                context.beginPath();
-                context.rect(x, y, width, height);
+                roundedRectPath(context, x, y, width, height, radius);
                 context.clip();
-                context.fillStyle = `rgba(37, 97, 124, ${0.08 + (1 - local) * 0.14})`;
-                context.fillRect(x, y, width, height);
+                drawScaledSurface(context, surfaces.arrows, 1);
+                if (remainderWidth > 0) {
+                    context.fillStyle = `rgba(37, 97, 124, ${0.03 + (1 - local) * 0.06})`;
+                    context.fillRect(remainderX, y, remainderWidth, height);
+                }
                 context.restore();
 
                 context.save();
+                roundedRectPath(context, x, y, width, height, radius);
+                context.clip();
                 context.beginPath();
-                context.rect(x, y, clipWidth, clipHeight);
+                context.rect(x, y, revealWidth, height);
                 context.clip();
                 drawScaledSurface(context, surfaces.arrowErased, 1);
+                const beamGradient = context.createLinearGradient(wipeX - beamHalf, 0, wipeX + beamHalf, 0);
+                beamGradient.addColorStop(0, "rgba(224, 247, 255, 0)");
+                beamGradient.addColorStop(0.46, "rgba(224, 247, 255, 0.16)");
+                beamGradient.addColorStop(0.5, "rgba(255, 255, 255, 0.8)");
+                beamGradient.addColorStop(0.54, "rgba(224, 247, 255, 0.16)");
+                beamGradient.addColorStop(1, "rgba(224, 247, 255, 0)");
+                context.fillStyle = beamGradient;
+                context.fillRect(x - 6, y - 6, width + 12, height + 12);
                 context.restore();
 
-                const lineWidth = Math.max(12, context.canvas.width / 42);
-                drawArrow(
-                    context,
-                    arrow,
-                    "rgba(255, 253, 249, 0.98)",
-                    lineWidth * (0.88 + local * 0.34),
-                    0.24 + local * 0.42
-                );
-                drawArrow(
-                    context,
-                    arrow,
-                    "rgba(215, 129, 42, 0.88)",
-                    Math.max(2, lineWidth * 0.12),
-                    0.16 + (1 - local) * 0.42
-                );
-
-                const brushX = arrow.x1 + (arrow.x2 - arrow.x1) * local;
-                const brushY = arrow.y1 + (arrow.y2 - arrow.y1) * local;
                 context.save();
-                context.fillStyle = "rgba(255, 253, 249, 0.98)";
+                context.strokeStyle = `rgba(255, 255, 255, ${0.28 + local * 0.24})`;
+                context.lineWidth = Math.max(1.5, height / 10);
                 context.beginPath();
-                context.arc(brushX, brushY, Math.max(12, lineWidth), 0, Math.PI * 2);
-                context.fill();
+                context.moveTo(wipeX, y - 4);
+                context.lineTo(wipeX, y + height + 4);
+                context.stroke();
                 context.restore();
-
-                if (local > 0.2) {
-                    drawStageBadge(
-                        context,
-                        x,
-                        Math.max(0, y - 26),
-                        `arrow ${index + 1}`,
-                        "rgba(37, 97, 124, 0.86)"
-                    );
-                }
             });
         }
 
