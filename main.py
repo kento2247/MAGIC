@@ -36,12 +36,21 @@ def main() -> None:
         pipeline.vae.enable_tiling()
 
     print("Loading input image...", flush=True)
-    image = Image.open("asserts/test.png").convert("RGBA")
+    image = Image.open("asserts/test2.png").convert("RGBA")
     inputs = {
         "image": image,
         "generator": torch.Generator(device="cuda").manual_seed(777),
         "true_cfg_scale": 4.0,
-        "prompt": "Decompose this architecture diagram into region-aware layers. Put the left module and its internal contents on separate layers from the right module and its internal contents. Separate text labels, arrows, connector lines, and box shapes whenever possible. Preserve exact spatial layout and transparent backgrounds. Do not merge left and right regions.",
+        "prompt": (
+            "Decompose this cropped academic architecture-diagram module into a small number of meaningful transparent layers "
+            "for vector reconstruction. Extract all readable text onto separate text-only layers whenever possible. "
+            "Separate bordered rectangles or container boxes from arrows, connector lines, and other directional marks. "
+            "A box border and an arrow should not appear in the same layer unless they are physically inseparable. "
+            "Do not produce empty layers, nearly blank layers, or full-canvas background-fill layers. "
+            "Each output layer should contain only one semantic object family: text, box or border, arrow or connector, icon, "
+            "or filled region. Preserve exact geometry, positions, sizes, colors, and transparent backgrounds. "
+            "Do not merge text with shapes. Do not add, remove, simplify, or hallucinate content."
+        ),
         "negative_prompt": "merged left and right regions, mixed components across layers, blurry text, duplicated arrows, broken lines, extra boxes",
         "num_inference_steps": 50,
         "num_images_per_prompt": 1,
